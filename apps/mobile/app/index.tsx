@@ -26,6 +26,71 @@ function isExpoGoOnIOS() {
   return Platform.OS === "ios" && Constants.appOwnership === "expo";
 }
 
+
+async function getPunchLocation(): Promise<PendingGeo> {
+  if (Platform.OS === "web") {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      throw new Error("Seu navegador não oferece suporte à localização.");
+    }
+
+    const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(
+        resolve,
+        (err) => {
+          const msg =
+            err.code === 1 ? "Permissão de localização negada. Libere a localização para este site nos ajustes do Safari." :
+            err.code === 2 ? "Não foi possível determinar sua localização. Verifique o GPS, Wi‑Fi e sinal do aparelho." :
+            err.code === 3 ? "A localização demorou demais para responder. Tente novamente em uma área com melhor sinal." :
+            "Não foi possível obter sua localização.";
+          reject(new Error(msg));
+        },
+        { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+      );
+    });
+
+    return {
+      latitude: pos.coords.latitude,
+      longitude: pos.coords.longitude,
+      accuracy: Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null,
+      mocked: false
+    };
+  }
+
+  const enabled = await Location.hasServicesEnabledAsync();
+  if (!enabled) throw new Error("GPS desligado. Ative a localização do aparelho para registrar o ponto.");
+
+  const permission = await Location.requestForegroundPermissionsAsync();
+  if (permission.status !== "granted") {
+    throw new Error("Permita o uso da localização para registrar o ponto.");
+  }
+
+  const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+  return {
+    latitude: pos.coords.latitude,
+    longitude: pos.coords.longitude,
+    accuracy: pos.coords.accuracy ?? null,
+    mocked: Boolean((pos as any).mocked)
+  };
+}
+
+async function appendSelfieToForm(form: FormData, uri: string) {
+  const filename = `ponto-${Date.now()}.jpg`;
+
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    if (!response.ok) throw new Error("Não foi possível preparar a foto para envio.");
+    const blob = await response.blob();
+    form.append("selfie", blob, filename);
+    return;
+  }
+
+  form.append("selfie", {
+    uri,
+    name: filename,
+    type: "image/jpeg"
+  } as any);
+}
+
 function biometricErrorMessage(error?: string | null) {
   const messages: Record<string, string> = {
     missing_usage_description: "O binário iOS não contém NSFaceIDUsageDescription. Instale o Development Build do Ponto Certo; Face ID não pode ser habilitado dentro do Expo Go.",
@@ -46,6 +111,7 @@ export default function App() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
+  const [clockStep, setClockStep] = useState<string | null>(null);
   useEffect(() => { (async () => { const saved = await AsyncStorage.getItem("pc_token"); setToken(saved); if (saved) { try { const { data } = await api.get("/auth/me"); setUser(data); if (data.employee_id) { const uid = await AsyncStorage.getItem(uidKey(Number(data.employee_id))); setDeviceUid(uid) } } catch { await AsyncStorage.removeItem("pc_token"); setToken(null) } } setReady(true) })() }, []);
   useEffect(() => { if (token && user) { loadToday(); loadHistory(); loadDeviceStatus(); loadScheduleContext() } }, [token, user, deviceUid]);
   const fallbackNextType = useMemo(() => entries.length < 4 ? ["CLOCK_IN", "BREAK_OUT", "BREAK_IN", "CLOCK_OUT"][entries.length] : "OTHER", [entries]);
@@ -88,6 +154,13 @@ export default function App() {
       let biometricTypes: string[] = [];
 
       if (requireBiometric) {
+        if (Platform.OS === "web") {
+          Alert.alert(
+            "Biometria no PWA",
+            "A biometria nativa deste cadastro está habilitada. No PWA do iPhone ela não pode ser validada pelo expo-local-authentication. Desabilite a exigência de biometria para este funcionário no dashboard ou utilize o aplicativo nativo. A selfie e o GPS continuam disponíveis no PWA."
+          );
+          return;
+        }
         const bio = await checkBiometrics(); if (!bio) return;
         const auth = await LocalAuthentication.authenticateAsync({
           promptMessage: "Confirme sua biometria para vincular este aparelho",
@@ -126,13 +199,17 @@ export default function App() {
       });
 
       await AsyncStorage.setItem(uidKey(Number(user.employee_id)), data.deviceUid);
-      await SecureStore.setItemAsync(
-        secretKey(Number(user.employee_id)),
-        data.deviceSecret,
-        requireBiometric
-          ? { requireAuthentication: true, authenticationPrompt: "Confirme sua biometria para proteger o Ponto Certo" }
-          : {}
-      );
+      if (Platform.OS === "web") {
+        await AsyncStorage.setItem(secretKey(Number(user.employee_id)), data.deviceSecret);
+      } else {
+        await SecureStore.setItemAsync(
+          secretKey(Number(user.employee_id)),
+          data.deviceSecret,
+          requireBiometric
+            ? { requireAuthentication: true, authenticationPrompt: "Confirme sua biometria para proteger o Ponto Certo" }
+            : {}
+        );
+      }
 
       setDeviceUid(data.deviceUid);
       Alert.alert(
@@ -155,18 +232,12 @@ export default function App() {
     if (!user?.employee_id) return;
     setLoading(true);
     try {
-      const enabled = await Location.hasServicesEnabledAsync();
-      if (!enabled) { Alert.alert("Diagnóstico GPS", "O GPS do aparelho está desligado."); return; }
-
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (permission.status !== "granted") { Alert.alert("Diagnóstico GPS", "Permissão de localização não concedida."); return; }
-
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const geo = await getPunchLocation();
       const payload = {
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-        accuracy: pos.coords.accuracy ?? null,
-        locationMocked: Boolean((pos as any).mocked)
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        accuracy: geo.accuracy,
+        locationMocked: geo.mocked
       };
 
       const { data } = await api.post("/time-entries/geofence-preview", payload);
@@ -253,13 +324,11 @@ export default function App() {
 
   async function confirmSelfieAndClock() {
     if (!selfieUri || !user?.employee_id) return;
-    setCameraOpen(false);
     setLoading(true);
+    setClockStep("Obtendo localização...");
     try {
-      const enabled = await Location.hasServicesEnabledAsync(); if (!enabled) { Alert.alert("GPS desligado", "Ative a localização do aparelho para registrar o ponto."); return }
-      const permission = await Location.requestForegroundPermissionsAsync(); if (permission.status !== "granted") { Alert.alert("Localização", "Permita o uso da localização para registrar o ponto."); return }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
-      const geo: PendingGeo = { latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy ?? null, mocked: Boolean((pos as any).mocked) };
+      const geo = await getPunchLocation();
+      setClockStep("Validando segurança...");
       if (geo.mocked) { Alert.alert("Localização simulada", "Foi detectado GPS simulado. O ponto foi bloqueado."); return }
       const maxAccuracy = deviceStatus?.policy?.maxGpsAccuracyMeters || 100; if (geo.accuracy != null && geo.accuracy > maxAccuracy) { Alert.alert("GPS sem precisão suficiente", `Precisão atual: ${Math.round(geo.accuracy)} m. Aguarde até ${maxAccuracy} m ou menos.`); return }
 
@@ -272,12 +341,23 @@ export default function App() {
         uid = await AsyncStorage.getItem(uidKey(Number(user.employee_id)));
         if (!uid) { Alert.alert("Aparelho não vinculado", "Vincule o dispositivo em Perfil."); return }
 
-        secret = requireBiometric
-          ? await SecureStore.getItemAsync(secretKey(Number(user.employee_id)), {
-              requireAuthentication: true,
-              authenticationPrompt: "Confirme sua biometria para registrar o ponto"
-            })
-          : await SecureStore.getItemAsync(secretKey(Number(user.employee_id)));
+        if (Platform.OS === "web") {
+          if (requireBiometric) {
+            Alert.alert(
+              "Biometria necessária",
+              "Este funcionário está configurado para exigir biometria nativa. No PWA do iPhone, desabilite essa exigência para este funcionário no dashboard ou utilize o app nativo."
+            );
+            return;
+          }
+          secret = await AsyncStorage.getItem(secretKey(Number(user.employee_id)));
+        } else {
+          secret = requireBiometric
+            ? await SecureStore.getItemAsync(secretKey(Number(user.employee_id)), {
+                requireAuthentication: true,
+                authenticationPrompt: "Confirme sua biometria para registrar o ponto"
+              })
+            : await SecureStore.getItemAsync(secretKey(Number(user.employee_id)));
+        }
 
         if (!secret) {
           Alert.alert(
@@ -299,12 +379,10 @@ export default function App() {
       if (uid) form.append("deviceUid", uid);
       if (secret) form.append("deviceSecret", secret);
       form.append("biometricType", requireBiometric ? "DEVICE_BIOMETRIC" : "NOT_REQUIRED");
-      form.append("selfie", {
-        uri:selfieUri,
-        name:`ponto-${Date.now()}.jpg`,
-        type:"image/jpeg"
-      } as any);
+      setClockStep("Preparando foto...");
+      await appendSelfieToForm(form, selfieUri);
 
+      setClockStep("Registrando ponto...");
       const { data } = await api.post("/time-entries/secure", form);
 
       const geoText = data.geo?.distanceMeters != null ? `\n📍 ${Math.round(data.geo.distanceMeters)} m do local autorizado` : "\n📍 Localização validada";
@@ -315,6 +393,7 @@ export default function App() {
           : "";
       const selfieText = data.selfie?.captured ? "\n📷 Foto registrada" : "";
 
+      setCameraOpen(false);
       Alert.alert("Ponto registrado", `${typeLabel[data.entry_type] || "Registro"} às ${time(data.registered_at)}${selfieText}${bioText}${geoText}`);
       setSelfieUri(null);
       await loadToday(); await loadHistory(); await loadDeviceStatus(); await loadScheduleContext();
@@ -329,6 +408,7 @@ export default function App() {
         e?.response?.data?.message || e?.message || "Não foi possível registrar o ponto."
       );
     } finally {
+      setClockStep(null);
       setLoading(false);
     }
   }
@@ -373,7 +453,7 @@ export default function App() {
           ) : (
             <>
               <Pressable style={s.secondaryCameraButton} onPress={()=>setSelfieUri(null)}><Text style={s.secondaryCameraText}>TIRAR OUTRA</Text></Pressable>
-              <Pressable style={s.confirmCameraButton} onPress={confirmSelfieAndClock}><Text style={s.confirmCameraText}>CONFIRMAR E REGISTRAR PONTO</Text></Pressable>
+              <Pressable style={[s.confirmCameraButton, loading && s.disabled]} onPress={confirmSelfieAndClock} disabled={loading}><Text style={s.confirmCameraText}>{clockStep || "CONFIRMAR E REGISTRAR PONTO"}</Text></Pressable>
             </>
           )}
         </View>
