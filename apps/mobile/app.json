@@ -46,7 +46,7 @@
         {
           "image": "./assets/icon.png",
           "imageWidth": 160,
-          "backgroundColor": "#f4f7fb"
+          "backgroundColor": "#ffffff"
         }
       ]
     ],
@@ -55,7 +55,7 @@
       "versionCode": 9,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#244a7d"
+        "backgroundColor": "#ffffff"
       }
     },
     "ios": {
@@ -73,7 +73,7 @@
     "icon": "./assets/icon.png",
     "web": {
       "output": "single",
-      "favicon": "./assets/icon.png"
+      "favicon": "./public/favicon.png"
     }
   }
 }

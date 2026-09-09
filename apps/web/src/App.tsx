@@ -168,7 +168,11 @@ export function App() {
     return (
       <main className="login-page">
         <div className="login-brand">
-          <div className="brand-mark">PC</div>
+          <img
+            className="brand-logo"
+            src="/brand/logo.png"
+            alt="PontoCerto — Sistema de gestão de ponto"
+          />
           <h1>
             Jornadas organizadas.
             <br />
@@ -243,7 +247,11 @@ export function App() {
   if (!user)
     return (
       <main className="session-state">
-        <div className="brand-mark">PC</div>
+        <img
+          className="brand-logo"
+          src="/brand/logo.png"
+          alt="PontoCerto — Sistema de gestão de ponto"
+        />
         <h1>Preparando seu painel</h1>
         {sessionError ? (
           <div role="alert">
@@ -315,11 +323,11 @@ export function App() {
         </a>
         <aside className="sidebar">
           <div className="sidebar-brand">
-            <div className="brand-mark small">PC</div>
-            <div>
-              <b>Ponto Certo</b>
-              <span>Gestão de jornada</span>
-            </div>
+            <img
+              className="brand-logo sidebar-logo"
+              src="/brand/logo.png"
+              alt="PontoCerto — Gestão de jornada"
+            />
           </div>
           {navigation}
           <div className="sidebar-user">
@@ -343,6 +351,11 @@ export function App() {
             >
               ☰ Menu
             </button>
+            <img
+              className="header-brand"
+              src="/icons/icon-192.png"
+              alt="PontoCerto"
+            />
             <span className="tenant-chip">{user.tenant_name}</span>
             <span className="top-user">{user.name}</span>
           </header>

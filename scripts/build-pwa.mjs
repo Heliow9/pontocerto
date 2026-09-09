@@ -15,11 +15,19 @@ let html = fs.readFileSync(index, "utf8");
 if (!html.includes('rel="manifest"'))
   html = html.replace(
     "</head>",
-    '<link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#244a7d"/><link rel="apple-touch-icon" href="/icons/icon-192.png"/></head>',
+    '<link rel="manifest" href="/manifest.webmanifest"/><meta name="theme-color" content="#007c88"/><link rel="apple-touch-icon" href="/icons/icon-192.png"/></head>',
   );
 html = html
   .replace(/<html[^>]*>/, '<html lang="pt-BR">')
   .replace(/<title>.*?<\/title>/, "<title>Ponto Certo</title>");
+html = html.replace(
+  /<link\b(?=[^>]*\brel=["'](?:shortcut )?icon["'])[^>]*>/gi,
+  "",
+);
+html = html.replace(
+  "</head>",
+  '<link rel="icon" type="image/png" href="/favicon.png?v=brand-202609"/></head>',
+);
 fs.writeFileSync(index, html);
 scan(directory);
 const version = crypto.createHash("sha256");

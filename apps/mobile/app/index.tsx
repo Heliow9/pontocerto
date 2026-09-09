@@ -1060,9 +1060,12 @@ export default function App() {
             contentContainerStyle={s.loginContainer}
           >
             <View style={s.login}>
-              <View style={s.logo}>
-                <Text style={s.logoText}>PC</Text>
-              </View>
+              <Image
+                source={require("../assets/logo.png")}
+                style={s.brandLogo}
+                resizeMode="contain"
+                accessibilityLabel="PontoCerto — Sistema de gestão de ponto"
+              />
               <Text accessibilityRole="header" style={s.title}>
                 Sua jornada, em dia.
               </Text>
@@ -1149,6 +1152,11 @@ export default function App() {
   return (
     <SafeAreaView style={s.page} edges={["top", "bottom"]}>
       <View style={s.header}>
+        <Image
+          source={require("../assets/icon.png")}
+          style={s.brandIcon}
+          accessibilityLabel="PontoCerto"
+        />
         <View style={{ flex: 1 }}>
           <Text style={s.eyebrow}>PONTO CERTO</Text>
           <Text style={s.hello}>Olá, {user.name?.split(" ")[0]}</Text>
@@ -1167,7 +1175,7 @@ export default function App() {
           {syncing ? (
             <ActivityIndicator />
           ) : (
-            <Ionicons name="refresh-outline" size={24} color="#244a7d" />
+            <Ionicons name="refresh-outline" size={24} color="#007c88" />
           )}
         </Pressable>
       </View>
@@ -1630,7 +1638,7 @@ export default function App() {
             <Ionicons
               name={item.icon}
               size={24}
-              color={tab === item.id ? "#244a7d" : "#65748a"}
+              color={tab === item.id ? "#007c88" : "#65748a"}
             />
             <Text style={[s.tabText, tab === item.id && s.tabActive]}>
               {item.label}
@@ -1893,10 +1901,10 @@ function Action({
         <Ionicons
           name={icon}
           size={24}
-          color={secondary ? "#244a7d" : "white"}
+          color={secondary ? "#007c88" : "white"}
         />
       )}
-      <Text style={[s.actionText, secondary ? { color: "#244a7d" } : s.white]}>
+      <Text style={[s.actionText, secondary ? { color: "#007c88" } : s.white]}>
         {label}
       </Text>
     </Pressable>
@@ -1956,11 +1964,19 @@ const s = StyleSheet.create({
     maxWidth: 440,
     alignSelf: "center",
   },
+  brandLogo: {
+    width: "100%",
+    height: 120,
+    backgroundColor: "white",
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  brandIcon: { width: 52, height: 52, borderRadius: 12, marginRight: 10 },
   logo: {
     width: 60,
     height: 60,
     borderRadius: 18,
-    backgroundColor: "#244a7d",
+    backgroundColor: "#007c88",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 12,
@@ -2037,7 +2053,7 @@ const s = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: "#edf3fb",
   },
-  statusText: { fontSize: 13, color: "#244a7d", fontWeight: "700" },
+  statusText: { fontSize: 13, color: "#007c88", fontWeight: "700" },
   action: {
     minHeight: 52,
     borderRadius: 13,
@@ -2048,7 +2064,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  primary: { backgroundColor: "#244a7d" },
+  primary: { backgroundColor: "#007c88" },
   secondary: {
     backgroundColor: "#edf3fb",
     borderWidth: 1,
@@ -2102,7 +2118,7 @@ const s = StyleSheet.create({
     backgroundColor: "#e6edf7",
     justifyContent: "center",
   },
-  segmentActive: { backgroundColor: "#244a7d" },
+  segmentActive: { backgroundColor: "#007c88" },
   tabs: {
     flexDirection: "row",
     borderTopWidth: 1,
@@ -2118,7 +2134,7 @@ const s = StyleSheet.create({
     gap: 4,
   },
   tabText: { fontSize: 13, color: "#596b82" },
-  tabActive: { fontWeight: "800", color: "#244a7d" },
+  tabActive: { fontWeight: "800", color: "#007c88" },
   cameraPage: { flex: 1, backgroundColor: "#101c30" },
   cameraHeader: { padding: 18, flexDirection: "row", gap: 10 },
   cameraTitle: { fontSize: 23, fontWeight: "800", color: "white" },

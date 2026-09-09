@@ -1,5 +1,13 @@
 # Melhorias implementadas — 09/09/2026
 
+## Identidade visual
+
+A logo fornecida foi adaptada para uso em fundo branco no acesso e no menu do painel, e no acesso mobile. O símbolo do relógio com seta aparece nos cabeçalhos, nos favicons, nos ícones de instalação PWA, no ícone Android e na tela de abertura nativa. O ícone adaptativo e o ícone maskable têm margem para os recortes do sistema. Os favicons e os ícones do manifest usam uma URL de versão para distinguir a nova identidade.
+
+Após publicar, o dashboard deve mostrar “Visão geral”, “Última consulta”, o botão “Atualizar”, indicadores clicáveis e “Atalhos da equipe”. A distribuição principal dos cartões foi preservada. Ver a estrutura antiga não permite concluir que seja cache: primeiro confirme o commit no servidor e a pasta servida pelo Nginx.
+
+Para esta atualização de marca, passaram novamente a compilação web/API, a verificação TypeScript mobile, as exportações PWA/Android e os 10 testes de interface. Alterações do ícone e da abertura Android exigem um novo build nativo e sua instalação; publicar a PWA não modifica o APK instalado.
+
 ## Web
 
 - Navegação por URL, menu adaptado ao celular, foco visível e acesso por teclado.

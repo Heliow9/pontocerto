@@ -858,7 +858,7 @@ tbody tr:hover {
 :root {
   --ink: #172033;
   --muted: #526176;
-  --brand: #244a7d;
+  --brand: #007c88;
   --line: #dce4ee;
 }
 button:disabled {
@@ -991,7 +991,7 @@ textarea {
 .text-button {
   border: 0;
   background: transparent;
-  color: #244a7d;
+  color: #007c88;
   font-weight: 650;
   text-align: left;
   padding: 4px 0;
@@ -1087,7 +1087,7 @@ th {
   margin-top: 18px;
 }
 .quick-links a {
-  color: #244a7d;
+  color: #007c88;
   padding: 12px;
   background: #f1f5fb;
   border-radius: 10px;
@@ -1334,4 +1334,27 @@ th {
 }
 .location-picker .schedule-tools {
   margin-top: 10px;
+}
+
+/* PontoCerto brand supplied in September 2026. */
+.brand-logo {
+  display: block;
+  width: min(100%, 400px);
+  height: auto;
+  border-radius: 14px;
+  background: #fff;
+}
+.login-brand .brand-logo {
+  margin-bottom: 28px;
+}
+.sidebar-brand .sidebar-logo {
+  width: 100%;
+  border-radius: 10px;
+}
+.header-brand {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
