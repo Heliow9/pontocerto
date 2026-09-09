@@ -9,3 +9,11 @@ web-build
 .vscode
 .DS_Store
 *.log
+
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+dist-android-check/
+
+.dependency-backup/

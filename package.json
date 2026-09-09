@@ -12,9 +12,26 @@
     "dev:mobile": "npm --workspace apps/mobile run start",
     "db:init": "npm --workspace apps/api run db:init",
     "build": "npm run build --workspaces --if-present",
-    "check": "npm run build --workspaces --if-present"
+    "check": "npm run build --workspace apps/api && npm run build --workspace apps/web && npm run check --workspace apps/mobile",
+    "test": "vitest run",
+    "test:ui": "playwright test"
   },
   "engines": {
     "node": ">=22.13.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/supertest": "^7.2.1",
+    "prettier": "^3.9.6",
+    "supertest": "^7.2.2",
+    "vitest": "^5.0.0"
+  },
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "expo-router": "57.0.20",
+    "expo-constants": "57.0.17",
+    "expo-linking": "57.0.9",
+    "@expo/metro-runtime": "57.0.15"
   }
 }

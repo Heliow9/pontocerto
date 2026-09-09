@@ -1,14 +1,20 @@
 export function localIsoDate(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const part = (type: string) =>
+    parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
-
 export function monthRange(date = new Date()) {
-  const start = new Date(date.getFullYear(), date.getMonth(), 1);
-  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  return { start: localIsoDate(start), end: localIsoDate(end) };
+  const [year, month] = localIsoDate(date).split("-").map(Number);
+  return {
+    start: `${year}-${String(month).padStart(2, "0")}-01`,
+    end: localIsoDate(new Date(Date.UTC(year, month, 0, 12))),
+  };
 }
 
 export function brDate(value?: string | null) {
@@ -31,8 +37,16 @@ export function minutesToHHMM(value?: number | null) {
   return `${sign}${String(Math.floor(abs / 60)).padStart(2, "0")}:${String(abs % 60).padStart(2, "0")}`;
 }
 
-export function apiMessage(error: any, fallback = "Não foi possível concluir a operação.") {
-  return error?.response?.data?.message || fallback;
+export function apiMessage(
+  error: any,
+  fallback = "Não foi possível concluir a operação.",
+) {
+  return (
+    error?.response?.data?.message ||
+    (error instanceof Error && !error.message.startsWith("Network")
+      ? error.message
+      : fallback)
+  );
 }
 
 export const entryTypeLabel: Record<string, string> = {
@@ -40,5 +54,5 @@ export const entryTypeLabel: Record<string, string> = {
   BREAK_OUT: "Saída intervalo",
   BREAK_IN: "Retorno intervalo",
   CLOCK_OUT: "Saída",
-  OTHER: "Registro"
+  OTHER: "Registro",
 };

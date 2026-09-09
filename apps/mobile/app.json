@@ -5,7 +5,7 @@
     "version": "0.4.5",
     "orientation": "portrait",
     "scheme": "pontocerto",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "plugins": [
       "expo-router",
       [
@@ -39,11 +39,24 @@
           "cameraPermission": "O Ponto Certo usa a câmera frontal para registrar uma foto do funcionário antes de cada marcação de ponto.",
           "recordAudioAndroid": false
         }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/icon.png",
+          "imageWidth": 160,
+          "backgroundColor": "#f4f7fb"
+        }
       ]
     ],
     "android": {
       "package": "com.pontocerto.app",
-      "versionCode": 9
+      "versionCode": 9,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#244a7d"
+      }
     },
     "ios": {
       "bundleIdentifier": "com.pontocerto.app",
@@ -56,6 +69,11 @@
         "NSLocationWhenInUseUsageDescription": "O Ponto Certo usa sua localização durante o registro de ponto para validar o local de trabalho.",
         "NSCameraUsageDescription": "O Ponto Certo usa a câmera frontal para registrar uma foto do funcionário antes de cada marcação de ponto."
       }
+    },
+    "icon": "./assets/icon.png",
+    "web": {
+      "output": "single",
+      "favicon": "./assets/icon.png"
     }
   }
 }

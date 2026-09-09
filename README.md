@@ -2,6 +2,12 @@
 
 SaaS multi-tenant de gestão de jornada com React, Expo/React Native, Node.js/Express e MySQL.
 
+## Atualização de interface e PWA
+
+Veja as [melhorias implementadas e verificações](docs/UI_UX_IMPLEMENTED.md) e o [guia de rebuild da API, web e PWA no servidor](docs/REBUILD_SERVER.md).
+
+Para atualizar um ambiente existente, use `npm ci --include=dev` e `npm run db:migrate --workspace apps/api`. Reserve `db:init` para a inicialização com dados de demonstração.
+
 ## O que mudou na v0.4
 
 A versão 0.4 remove a dependência de reconhecimento facial AWS e usa a biometria nativa do próprio aparelho.
@@ -35,14 +41,14 @@ Também não significa presença contínua durante todo o expediente: comprova a
 - MySQL 5.6+
 - Expo SDK 57 no app mobile
 
-## Instalação / atualização
+## Instalação inicial para desenvolvimento
 
 Preserve o arquivo `apps/api/.env` se você já tem a v0.1, v0.2 ou v0.3 funcionando.
 
 Na raiz:
 
 ```powershell
-npm install
+npm ci --include=dev
 npm run db:init
 ```
 
@@ -67,11 +73,12 @@ Mobile:
 
 ```powershell
 cd apps\mobile
-npx expo install --fix
 npx expo-doctor@latest
 cd ..\..
 npm run dev:mobile
 ```
+
+As versões compartilhadas de React e dos módulos Expo estão alinhadas pelo lockfile e pelos `overrides` da raiz. Após atualizar o SDK, valide novamente com `expo-doctor` e os builds dos dois aplicativos.
 
 ## .env da API
 
