@@ -4,17 +4,20 @@ import { z } from "zod";
 import { pool } from "../db/pool.js";
 import { signToken } from "../utils/jwt.js";
 import { authMiddleware } from "../middlewares/auth.js";
+import { passwordRouter } from "./password.routes.js";
 
 export const authRouter = Router();
+authRouter.use(passwordRouter);
 
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1)
+  password: z.string().min(1),
 });
 
 authRouter.post("/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ message: "Dados inválidos." });
+  if (!parsed.success)
+    return res.status(400).json({ message: "Dados inválidos." });
 
   const { email, password } = parsed.data;
   const [rows] = await pool.query<any[]>(
@@ -24,7 +27,7 @@ authRouter.post("/login", async (req, res) => {
        JOIN tenants t ON t.id = u.tenant_id
       WHERE LOWER(u.email) = LOWER(?)
       LIMIT 1`,
-    [email]
+    [email],
   );
 
   const user = rows[0];
@@ -44,7 +47,7 @@ authRouter.post("/login", async (req, res) => {
     employeeId: user.employee_id ? Number(user.employee_id) : null,
     role: user.role,
     name: user.name,
-    email: user.email
+    email: user.email,
   };
 
   res.json({ token: signToken(payload), user: payload });
@@ -60,7 +63,7 @@ authRouter.get("/me", authMiddleware, async (req, res) => {
        LEFT JOIN companies c ON c.id = u.company_id AND c.tenant_id = u.tenant_id
        LEFT JOIN employees e ON e.id = u.employee_id AND e.tenant_id = u.tenant_id
       WHERE u.id = ? AND u.tenant_id = ? LIMIT 1`,
-    [req.auth!.userId, req.auth!.tenantId]
+    [req.auth!.userId, req.auth!.tenantId],
   );
   res.json(rows[0] || null);
 });

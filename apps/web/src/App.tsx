@@ -1,3 +1,4 @@
+import { PasswordPage } from "./pages/PasswordPage";
 import { PwaNotice } from "./components/PwaNotice";
 import { AdjustmentsPage } from "./pages/AdjustmentsPage";
 import { useEffect, useState } from "react";
@@ -29,8 +30,10 @@ type Page =
   | "reports"
   | "settings"
   | "saas"
-  | "adjustments";
+  | "adjustments"
+  | "password";
 const nav: { id: Page; label: string; group: string }[] = [
+  { id: "password", label: "Alterar senha", group: "Minha conta" },
   { id: "dashboard", label: "Visão geral", group: "Operação" },
   { id: "points", label: "Marcações", group: "Operação" },
   { id: "adjustments", label: "Solicitações de ajuste", group: "Operação" },
@@ -281,6 +284,7 @@ export function App() {
       </main>
     );
   const pages: Record<Page, React.ReactNode> = {
+    password: <PasswordPage />,
     dashboard: <DashboardPage />,
     companies: <CompaniesPage notify={notify} />,
     employees: <EmployeesPage notify={notify} />,
@@ -295,24 +299,26 @@ export function App() {
   };
   const navigation = (
     <nav aria-label="Navegação principal">
-      {["Operação", "Cadastros", "Administração"].map((group) => (
-        <div className="nav-group" key={group}>
-          <span className="nav-heading">{group}</span>
-          {visible
-            .filter((n) => n.group === group)
-            .map((n) => (
-              <a
-                key={n.id}
-                href={`#${n.id}`}
-                aria-current={page === n.id ? "page" : undefined}
-                className={page === n.id ? "active" : ""}
-                onClick={() => go(n.id)}
-              >
-                {n.label}
-              </a>
-            ))}
-        </div>
-      ))}
+      {["Operação", "Cadastros", "Administração", "Minha conta"].map(
+        (group) => (
+          <div className="nav-group" key={group}>
+            <span className="nav-heading">{group}</span>
+            {visible
+              .filter((n) => n.group === group)
+              .map((n) => (
+                <a
+                  key={n.id}
+                  href={`#${n.id}`}
+                  aria-current={page === n.id ? "page" : undefined}
+                  className={page === n.id ? "active" : ""}
+                  onClick={() => go(n.id)}
+                >
+                  {n.label}
+                </a>
+              ))}
+          </div>
+        ),
+      )}
     </nav>
   );
   return (

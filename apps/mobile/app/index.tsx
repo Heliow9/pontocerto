@@ -1,3 +1,4 @@
+import { ChangePassword } from "../src/ChangePassword";
 import { DateTimeField } from "../src/DateTimeField";
 import {
   SafeAreaView,
@@ -1508,7 +1509,11 @@ export default function App() {
         </ScrollView>
       )}
       {tab === "profile" && (
-        <ScrollView contentContainerStyle={s.content}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          contentContainerStyle={s.content}
+        >
           <Text accessibilityRole="header" style={s.title}>
             Seu perfil
           </Text>
@@ -1519,6 +1524,7 @@ export default function App() {
             <Info label="Cargo" value={user.position_name} />
             <Info label="E-mail" value={user.email} />
           </View>
+          <ChangePassword />
           <View style={s.card}>
             <Text style={s.cardTitle}>Aparelho e permissões</Text>
             <Info
@@ -1603,7 +1609,7 @@ export default function App() {
             onPress={() =>
               Alert.alert(
                 "Ajuda com o acesso",
-                "Para trocar sua senha ou vincular um novo aparelho, solicite ao RH a atualização do seu cadastro. Nunca compartilhe sua senha.",
+                "Para alterar sua senha, use Segurança da conta neste perfil. Se esqueceu a senha atual ou precisa vincular outro aparelho, consulte o RH. Nunca compartilhe sua senha.",
               )
             }
           />

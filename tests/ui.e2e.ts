@@ -309,3 +309,85 @@ test("PWA abre offline com dados identificados e registro bloqueado", async ({
     page.getByRole("button", { name: "Atualize para registrar" }),
   ).toBeDisabled();
 });
+
+for (const role of ["TENANT_ADMIN", "SUPER_ADMIN"]) {
+  test(`alteração de senha web: ${role}`, async ({ page }) => {
+    await admin(page, "password", role);
+    let calls = 0;
+    await page.route("**/auth/password", (route) => {
+      calls++;
+      return route.fulfill({
+        status: calls === 1 ? 400 : 200,
+        json: {
+          message:
+            calls === 1
+              ? "A senha atual está incorreta."
+              : "Senha alterada com sucesso.",
+        },
+      });
+    });
+    await page
+      .getByLabel("Senha atual", { exact: true })
+      .fill("Anterior-teste-123");
+    await page.getByLabel("Nova senha", { exact: true }).fill("Nova-teste-456");
+    await page
+      .getByLabel("Confirmar nova senha", { exact: true })
+      .fill("Diferente-123");
+    await page.getByRole("button", { name: "Salvar nova senha" }).click();
+    await expect(page.getByRole("alert")).toContainText("não corresponde");
+    expect(calls).toBe(0);
+    await page
+      .getByLabel("Confirmar nova senha", { exact: true })
+      .fill("Nova-teste-456");
+    await page.getByRole("button", { name: "Salvar nova senha" }).click();
+    await expect(page.getByRole("alert")).toContainText(
+      "senha atual está incorreta",
+    );
+    await expect(
+      page.getByRole("heading", { name: "Alterar senha" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Salvar nova senha" }).click();
+    await expect(
+      page.getByText(
+        "Senha alterada com sucesso. Use a nova senha no próximo acesso.",
+      ),
+    ).toBeVisible();
+    await expect(page.getByLabel("Senha atual", { exact: true })).toHaveValue(
+      "",
+    );
+  });
+}
+test("alteração de senha na PWA pelo perfil", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mock(page, "FUNCIONARIO");
+  await page.goto("http://127.0.0.1:4174");
+  await page.getByLabel("E-mail", { exact: true }).fill("maria@example.test");
+  await page.getByLabel("Senha", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  await page.getByRole("tab", { name: "Perfil", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Alterar senha", exact: true })
+    .click();
+  await page
+    .getByLabel("Senha atual", { exact: true })
+    .fill("Anterior-teste-123");
+  await page.getByLabel("Nova senha", { exact: true }).fill("Nova-teste-456");
+  await page
+    .getByLabel("Confirmar nova senha", { exact: true })
+    .fill("Diferente-123");
+  await page.getByRole("button", { name: "Salvar nova senha" }).click();
+  await expect(page.getByRole("alert")).toContainText("não corresponde");
+  await page
+    .getByLabel("Confirmar nova senha", { exact: true })
+    .fill("Nova-teste-456");
+  await page.getByRole("button", { name: "Salvar nova senha" }).click();
+  await expect(
+    page.getByText(
+      "Senha alterada com sucesso. Use a nova senha no próximo acesso.",
+    ),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Alterar senha", exact: true })
+    .click();
+  await expect(page.getByLabel("Senha atual", { exact: true })).toHaveValue("");
+});
