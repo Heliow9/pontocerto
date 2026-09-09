@@ -16,7 +16,10 @@ const schema = z.object({
   CORS_ORIGINS: z.string().default("http://localhost:5173,http://localhost:8081"),
   MAPBOX_ACCESS_TOKEN: z.preprocess(emptyToUndefined, z.string().optional()),
   SELFIE_STORAGE_DIR: z.string().default("./storage/selfies"),
-  SELFIE_MAX_IMAGE_MB: z.coerce.number().min(1).max(15).default(6)
+  SELFIE_MAX_IMAGE_MB: z.coerce.number().min(1).max(15).default(6),
+  // Compatibilidade com rotas antigas de reconhecimento facial. Nesta versão o provedor fica desativado.
+  FACE_PROVIDER: z.string().default("DISABLED"),
+  FACE_MAX_IMAGE_MB: z.coerce.number().min(1).max(15).default(6)
 });
 
 export const env = schema.parse(process.env);

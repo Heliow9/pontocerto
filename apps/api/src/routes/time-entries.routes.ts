@@ -27,11 +27,11 @@ const selfieUpload = multer({
 });
 
 const nullableNumber = z.preprocess(
-  (v)=>v===undefined||v===null||v===""?null:Number(v),
+  (v: unknown)=>v===undefined||v===null||v===""?null:Number(v),
   z.number().nullable()
 );
 const booleanField = z.preprocess(
-  (v)=>v===true||v===1||v==="1"||v==="true",
+  (v: unknown)=>v===true||v===1||v==="1"||v==="true",
   z.boolean()
 );
 
@@ -61,9 +61,9 @@ const secureSchema = z.object({
   longitude: nullableNumber,
   accuracy: nullableNumber.optional(),
   locationMocked: booleanField.default(false),
-  deviceUid: z.preprocess(v=>v===""?null:v,z.string().min(8).max(190).optional().nullable()),
-  deviceSecret: z.preprocess(v=>v===""?null:v,z.string().min(32).max(256).optional().nullable()),
-  biometricType: z.preprocess(v=>v===""?null:v,z.string().min(3).max(80).optional().nullable()).default("DEVICE_BIOMETRIC")
+  deviceUid: z.preprocess((v: unknown)=>v===""?null:v,z.string().min(8).max(190).optional().nullable()),
+  deviceSecret: z.preprocess((v: unknown)=>v===""?null:v,z.string().min(32).max(256).optional().nullable()),
+  biometricType: z.preprocess((v: unknown)=>v===""?null:v,z.string().min(3).max(80).optional().nullable()).default("DEVICE_BIOMETRIC")
 });
 
 async function getEmployeeForClock(req: any, requestedEmployeeId?: number) {

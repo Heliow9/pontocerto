@@ -6,7 +6,6 @@ import { requireRole } from "../middlewares/require-role.js";
 import { env } from "../config/env.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 import { enrollFace, revokeFace } from "../services/face.service.js";
-import { getCompanySecurityPolicy } from "../services/geofence.service.js";
 import { writeAudit } from "../utils/audit.js";
 
 export const faceRouter=Router();
@@ -31,8 +30,14 @@ faceRouter.get("/my/status",async(req,res)=>{
   const employee=await myEmployee(req);
   if(!employee)return res.status(400).json({message:"Usuário não vinculado a funcionário."});
   const [profiles]=await pool.query<any[]>(`SELECT provider,status,enrolled_at,last_verified_at FROM employee_face_profiles WHERE tenant_id=? AND employee_id=? LIMIT 1`,[req.auth!.tenantId,employee.id]);
-  const policy=await getCompanySecurityPolicy(req.auth!.tenantId,employee.company_id);
-  res.json({required:policy.requireFaceRecognition,provider:env.FACE_PROVIDER,configured:env.FACE_PROVIDER!=="DISABLED",enrolled:profiles[0]?.status==="ENROLLED",profile:profiles[0]||null,policy});
+  res.json({
+    required:false,
+    provider:"DISABLED",
+    configured:false,
+    enrolled:false,
+    profile:profiles[0]||null,
+    message:"Reconhecimento facial em nuvem está desativado. O ponto usa selfie obrigatória e biometria do dispositivo."
+  });
 });
 
 faceRouter.post("/my/enroll",upload.single("faceImage"),async(req,res)=>{
