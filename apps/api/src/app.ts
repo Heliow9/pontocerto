@@ -1,0 +1,25 @@
+import express from "express";
+import cors from "cors";
+import { env } from "./config/env.js";
+import { healthRouter } from "./routes/health.routes.js";
+import { authRouter } from "./routes/auth.routes.js";
+import { employeesRouter } from "./routes/employees.routes.js";
+import { timeEntriesRouter } from "./routes/time-entries.routes.js";
+import { reportsRouter } from "./routes/reports.routes.js";
+import { companiesRouter } from "./routes/companies.routes.js";
+import { schedulesRouter } from "./routes/schedules.routes.js";
+import { dashboardRouter } from "./routes/dashboard.routes.js";
+import { holidaysRouter } from "./routes/holidays.routes.js";
+import { absencesRouter } from "./routes/absences.routes.js";
+import { calculationsRouter } from "./routes/calculations.routes.js";
+import { settingsRouter } from "./routes/settings.routes.js";
+import { saasRouter } from "./routes/saas.routes.js";
+import { locationsRouter } from "./routes/locations.routes.js";
+import { devicesRouter } from "./routes/devices.routes.js";
+
+export const app = express();
+app.use(cors({origin(origin,callback){const allowed=env.CORS_ORIGINS.split(",").map(x=>x.trim());if(!origin||allowed.includes(origin))return callback(null,true);callback(new Error("Origin não permitida pelo CORS."));},credentials:true}));
+app.use(express.json({limit:"3mb"}));
+app.get("/",(_req,res)=>res.json({name:"Ponto Certo SaaS API",version:"0.4.4",multiTenant:true,security:"SELFIE+DEVICE_BIOMETRIC+GEOFENCE+SCHEDULE"}));
+app.use("/health",healthRouter);app.use("/auth",authRouter);app.use("/dashboard",dashboardRouter);app.use("/companies",companiesRouter);app.use("/employees",employeesRouter);app.use("/schedules",schedulesRouter);app.use("/time-entries",timeEntriesRouter);app.use("/holidays",holidaysRouter);app.use("/absences",absencesRouter);app.use("/calculations",calculationsRouter);app.use("/reports",reportsRouter);app.use("/settings",settingsRouter);app.use("/saas",saasRouter);app.use("/locations",locationsRouter);app.use("/devices",devicesRouter);
+app.use((err:any,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{console.error(err);res.status(500).json({message:"Erro interno do servidor.",detail:env.NODE_ENV==="development"?err?.message:undefined});});

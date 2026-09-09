@@ -1,0 +1,2 @@
+export const BRASILIA_NOW_SQL = "CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00')";
+export const BRASILIA_DATE_SQL = "DATE(CONVERT_TZ(UTC_TIMESTAMP(), '+00:00', '-03:00'))";

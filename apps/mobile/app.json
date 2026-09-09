@@ -1,0 +1,61 @@
+{
+  "expo": {
+    "name": "Ponto Certo",
+    "slug": "ponto-certo",
+    "version": "0.4.4",
+    "orientation": "portrait",
+    "scheme": "pontocerto",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "most-recent"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "O Ponto Certo usa o Face ID para confirmar a biometria do aparelho antes do registro de ponto."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "O Ponto Certo usa o Face ID para liberar com segurança a credencial deste aparelho antes do registro de ponto."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "O Ponto Certo usa sua localização para verificar se você está dentro da área autorizada para registrar o ponto."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "O Ponto Certo usa a câmera frontal para registrar uma foto do funcionário antes de cada marcação de ponto.",
+          "recordAudioAndroid": false
+        }
+      ]
+    ],
+    "android": {
+      "package": "com.pontocerto.app",
+      "versionCode": 8
+    },
+    "ios": {
+      "bundleIdentifier": "com.pontocerto.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "buildNumber": "8",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "O Ponto Certo usa o Face ID para confirmar a biometria do aparelho antes do registro de ponto.",
+        "NSLocationWhenInUseUsageDescription": "O Ponto Certo usa sua localização durante o registro de ponto para validar o local de trabalho.",
+        "NSCameraUsageDescription": "O Ponto Certo usa a câmera frontal para registrar uma foto do funcionário antes de cada marcação de ponto."
+      }
+    }
+  }
+}

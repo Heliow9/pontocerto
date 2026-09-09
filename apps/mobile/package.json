@@ -1,0 +1,40 @@
+{
+  "name": "@ponto-certo/mobile",
+  "version": "0.4.4",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "doctor": "npx expo-doctor@latest",
+    "start:go": "expo start",
+    "dev:ios": "npx eas-cli@latest build --profile development --platform ios",
+    "dev:android": "npx eas-cli@latest build --profile development --platform android",
+    "preview:ios": "npx eas-cli@latest build --profile preview --platform ios",
+    "preview:android": "npx eas-cli@latest build --profile preview --platform android"
+  },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "axios": "^1.7.7",
+    "expo": "~57.0.18",
+    "expo-camera": "~57.0.4",
+    "expo-constants": "~57.0.17",
+    "expo-dev-client": "~57.0.18",
+    "expo-device": "~57.0.1",
+    "expo-local-authentication": "~57.0.2",
+    "expo-location": "~57.0.16",
+    "expo-router": "~57.0.17",
+    "expo-secure-store": "~57.0.2",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "~5.9.2"
+  }
+}
