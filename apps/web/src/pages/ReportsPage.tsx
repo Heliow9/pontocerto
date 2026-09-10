@@ -15,7 +15,12 @@ export function ReportsPage({
 }) {
   const range = monthRange();
   const { canManage } = useAccess();
-  const [tab, setTab] = useState<"monthly" | "payroll">("monthly");
+  const [tab, setTab] = useState<"monthly" | "payroll">(
+    canManage &&
+      new URLSearchParams(location.hash.split("?")[1]).get("tab") === "payroll"
+      ? "payroll"
+      : "monthly",
+  );
   const [employees, setEmployees] = useState<Employee[]>([]),
     [employeeId, setEmployeeId] = useState(""),
     [start, setStart] = useState(range.start),
@@ -92,20 +97,24 @@ export function ReportsPage({
         subtitle="Espelho mensal e exportação de pontos para a folha de pagamento"
       />
       {canManage && (
-        <div className="toolbar" aria-label="Tipo de relatório">
+        <div className="report-choices" aria-label="Tipo de relatório">
           <button
             className={tab === "monthly" ? "primary" : "secondary"}
             aria-pressed={tab === "monthly"}
+            aria-label="Espelho mensal"
             onClick={() => setTab("monthly")}
           >
             Espelho mensal
+            <small>Consultar horas e baixar o PDF de um funcionário</small>
           </button>
           <button
             className={tab === "payroll" ? "primary" : "secondary"}
             aria-pressed={tab === "payroll"}
+            aria-label="Exportar para ERP"
             onClick={() => setTab("payroll")}
           >
             Exportar para ERP
+            <small>Preparar as horas da equipe para a contabilidade</small>
           </button>
         </div>
       )}

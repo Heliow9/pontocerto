@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { PageHeader, Empty, Badge } from "../components/Ui";
 import { brDateTime, entryTypeLabel } from "../utils";
+import { Icon } from "../components/Icon";
+import { useAccess } from "../components/Access";
 
 export function DashboardPage() {
+  const { canManage, canAdjust } = useAccess();
   const [data, setData] = useState<any>(null);
   const state = useLoadState();
   const [updated, setUpdated] = useState("");
@@ -59,6 +62,39 @@ export function DashboardPage() {
         }
       />
       <LoadState state={state} retry={load} />
+      <section className="dashboard-welcome">
+        <div>
+          <span className="eyebrow">SUA ROTINA, MAIS ORGANIZADA</span>
+          <h2>
+            Um bom dia começa
+            <br />
+            com tudo em dia.
+          </h2>
+          <p>
+            Acompanhe os pontos, resolva pendências e prepare o fechamento da
+            equipe.
+          </p>
+        </div>
+        <div className="today-focus">
+          <span className="focus-icon">
+            <Icon name="adjustments" size={26} />
+          </span>
+          <strong>
+            {data.pendingAdjustments > 0
+              ? `${data.pendingAdjustments} ajuste${data.pendingAdjustments === 1 ? "" : "s"} aguardando análise`
+              : "Nenhum ajuste pendente"}
+          </strong>
+          <p>
+            {data.pendingAdjustments > 0
+              ? "Confira os horários e motivos enviados pela equipe."
+              : "Continue acompanhando as marcações e as ocorrências do período."}
+          </p>
+          <a href="#adjustments">
+            {canAdjust ? "Analisar solicitações" : "Consultar solicitações"}
+            <Icon name="arrow" size={17} />
+          </a>
+        </div>
+      </section>
       <section className="stats-grid">
         <a href="#employees" className="stat-card stat-link">
           <span>Funcionários</span>
@@ -80,6 +116,61 @@ export function DashboardPage() {
           <strong>{data.pendingAdjustments}</strong>
           <small>abrir solicitações</small>
         </a>
+      </section>
+
+      <section className="task-section" aria-label="Ações do dia a dia">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">POR ONDE COMEÇAR</span>
+            <h2>O que você precisa fazer?</h2>
+          </div>
+          <span className="muted">Escolha uma tarefa para continuar</span>
+        </div>
+        <div className="task-cards">
+          <a className="task-card" href="#points">
+            <span className="task-icon">
+              <Icon name="points" />
+            </span>
+            <h3>Conferir os pontos</h3>
+            <p>Veja entradas, saídas e os detalhes de cada registro.</p>
+            <span className="task-action">
+              Ver marcações <Icon name="arrow" size={16} />
+            </span>
+          </a>
+          <a className="task-card" href="#reports">
+            <span className="task-icon">
+              <Icon name="reports" />
+            </span>
+            <h3>Fechar o período</h3>
+            <p>Confira as horas da equipe e gere o espelho mensal.</p>
+            <span className="task-action">
+              Abrir relatórios <Icon name="arrow" size={16} />
+            </span>
+          </a>
+          {canManage ? (
+            <a className="task-card" href="#reports?tab=payroll">
+              <span className="task-icon">
+                <Icon name="companies" />
+              </span>
+              <h3>Enviar para a contabilidade</h3>
+              <p>Prepare um arquivo de horas para importar na folha.</p>
+              <span className="task-action">
+                Exportar para ERP <Icon name="arrow" size={16} />
+              </span>
+            </a>
+          ) : (
+            <a className="task-card" href="#employees">
+              <span className="task-icon">
+                <Icon name="employees" />
+              </span>
+              <h3>Consultar a equipe</h3>
+              <p>Encontre jornadas, locais e informações dos funcionários.</p>
+              <span className="task-action">
+                Ver funcionários <Icon name="arrow" size={16} />
+              </span>
+            </a>
+          )}
+        </div>
       </section>
 
       <section className="content-grid two-thirds">

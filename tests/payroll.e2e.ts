@@ -101,14 +101,20 @@ test("selects multiple employees, prepares preview, downloads exact content and 
     page.getByLabel("Código da empresa no ERP", { exact: true }),
   ).toHaveValue("91");
   await expect(
-    page.getByRole("button", { name: "Preparar exportação" }),
-  ).toBeDisabled();
+    page.getByLabel("Código da empresa no ERP", { exact: true }),
+  ).not.toBeVisible();
   await expect(page.getByLabel("Selecionar Carla Lima")).toHaveCount(0);
-  await page.getByRole("button", { name: "Selecionar exibidos" }).click();
-  await expect(page.getByText("2 de 2 selecionados")).toBeVisible();
   await page.getByLabel("Início da apuração").fill("2025-08-01");
   await page.getByLabel("Fim da apuração").fill("2025-08-31");
   await page.getByLabel("Competência da folha").fill("2025-08");
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
+  await page.getByRole("button", { name: "Selecionar exibidos" }).click();
+  await expect(page.getByText("2 de 2 selecionados")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Continuar para códigos da folha" })
+    .click();
   const generation = page.waitForRequest((r) =>
     r.url().endsWith("/reports/payroll/generate"),
   );
@@ -130,6 +136,10 @@ test("selects multiple employees, prepares preview, downloads exact content and 
     path: "test-results/payroll-desktop.png",
     fullPage: true,
   });
+  await page
+    .getByRole("navigation", { name: "Etapas da exportação" })
+    .getByRole("button", { name: /Funcionários/ })
+    .click();
   await page.getByLabel("Matrícula no ERP de Ana Oliveira").fill("22");
   await expect(
     page.getByRole("button", { name: "Baixar arquivo para ERP" }),
@@ -142,8 +152,15 @@ test("changing company clears selection and uses the corresponding employee list
   await page
     .getByRole("button", { name: "Exportar para ERP", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
   await page.getByLabel("Selecionar Ana Oliveira").check();
+  await page.getByRole("button", { name: "Voltar", exact: true }).click();
   await page.getByLabel("Empresa para exportação").selectOption("3");
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
   await expect(page.getByText("0 de 1 selecionados")).toBeVisible();
   await expect(page.getByLabel("Selecionar Carla Lima")).toBeVisible();
   await expect(page.getByLabel("Selecionar Ana Oliveira")).toHaveCount(0);
@@ -161,7 +178,13 @@ test("shows export failures without offering an old download", async ({
   await page
     .getByRole("button", { name: "Exportar para ERP", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
   await page.getByLabel("Selecionar Ana Oliveira").check();
+  await page
+    .getByRole("button", { name: "Continuar para códigos da folha" })
+    .click();
   await page.getByRole("button", { name: "Preparar exportação" }).click();
   await expect(
     page.getByText("Há solicitações de ajuste pendentes no período.", {
@@ -180,9 +203,12 @@ test("keeps the employee selection usable on a narrow screen", async ({
   await page
     .getByRole("button", { name: "Exportar para ERP", exact: true })
     .click();
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
   await page.getByLabel("Selecionar Ana Oliveira").check();
   await expect(
-    page.getByRole("button", { name: "Preparar exportação" }),
+    page.getByRole("button", { name: "Continuar para códigos da folha" }),
   ).toBeEnabled();
   expect(
     await page.evaluate(
@@ -200,4 +226,18 @@ test("hides payroll exports from supervisors", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Exportar para ERP" }),
   ).toHaveCount(0);
+});
+
+test("wizard blocks invalid periods and empty selections before making an export request", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("button", { name: "Exportar para ERP", exact: true }).click();
+  await page.getByLabel("Fim da apuração").fill("2099-12-01");
+  await page.getByRole("button", { name: "Continuar para funcionários" }).click();
+  await expect(page.getByRole("alert")).toContainText("até ontem");
+  await page.getByLabel("Início da apuração").fill("2025-08-01");
+  await page.getByLabel("Fim da apuração").fill("2025-08-31");
+  await page.getByRole("button", { name: "Continuar para funcionários" }).click();
+  await page.getByRole("button", { name: "Continuar para códigos da folha" }).click();
+  await expect(page.getByRole("alert")).toContainText("pelo menos um funcionário");
+  await expect(page.getByRole("button", { name: "Preparar exportação" })).toHaveCount(0);
 });

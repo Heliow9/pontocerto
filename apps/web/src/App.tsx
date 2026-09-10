@@ -18,6 +18,8 @@ import { apiMessage } from "./utils";
 import { useRef } from "react";
 import { Modal } from "./components/Modal";
 import { AccessProvider } from "./components/Access";
+import { Icon } from "./components/Icon";
+import { WorkspaceTools } from "./components/WorkspaceTools";
 
 type Page =
   | "dashboard"
@@ -313,6 +315,7 @@ export function App() {
                   className={page === n.id ? "active" : ""}
                   onClick={() => go(n.id)}
                 >
+                  <Icon name={n.id} size={18} />
                   {n.label}
                 </a>
               ))}
@@ -363,6 +366,7 @@ export function App() {
               alt="PontoCerto"
             />
             <span className="tenant-chip">{user.tenant_name}</span>
+            <WorkspaceTools page={page} links={visible} />
             <span className="top-user">{user.name}</span>
           </header>
           <PwaNotice />

@@ -7,7 +7,13 @@ import { api } from "../api";
 import { Employee, TimeEntry } from "../types";
 import { Badge, Empty, PageHeader } from "../components/Ui";
 import { Modal } from "../components/Modal";
-import { apiMessage, brDateTime, entryTypeLabel, localIsoDate } from "../utils";
+import {
+  apiMessage,
+  brDate,
+  brDateTime,
+  entryTypeLabel,
+  localIsoDate,
+} from "../utils";
 const today = localIsoDate();
 export function PointsPage({
   notify,
@@ -16,6 +22,13 @@ export function PointsPage({
 }) {
   const { canManage, canAdjust, role } = useAccess();
   const editable = canAdjust;
+  const [securityDetails, setSecurityDetails] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [applied, setApplied] = useState({
+    start: today,
+    end: today,
+    employeeId: "",
+  });
   const [items, setItems] = useState<TimeEntry[]>([]),
     [employees, setEmployees] = useState<Employee[]>([]),
     [start, setStart] = useState(today),
@@ -42,12 +55,19 @@ export function PointsPage({
     ]);
     setItems(a.data);
     setEmployees(b.data);
+    setApplied({ start, end, employeeId });
   }
   const load = () => loadState.run(fetchData);
   useEffect(() => {
     load();
   }, []);
   async function process() {
+    if (processing) return;
+    if (!start || !end || start > end) {
+      notify("Confira as datas antes de calcular as horas.", "error");
+      return;
+    }
+    setProcessing(true);
     try {
       await api.post("/calculations/process", {
         start,
@@ -57,6 +77,8 @@ export function PointsPage({
       notify("Período processado.");
     } catch (e) {
       notify(apiMessage(e), "error");
+    } finally {
+      setProcessing(false);
     }
   }
   async function saveManual(e: React.FormEvent) {
@@ -100,8 +122,8 @@ export function PointsPage({
     <>
       <LoadState state={loadState} retry={load} />
       <PageHeader
-        title="Pontos"
-        subtitle="Marcações com evidências de foto, jornada, GPS, dispositivo e biometria"
+        title="Marcações de ponto"
+        subtitle="Consulte entradas e saídas. Abra os detalhes de segurança quando precisar conferir um registro."
         action={
           editable && (
             <button
@@ -151,16 +173,45 @@ export function PointsPage({
             ))}
           </select>
         </label>
-        <button className="ghost" onClick={load}>
-          Filtrar
+        <button className="primary" onClick={load} disabled={loadState.pending}>
+          {loadState.pending ? "Buscando..." : "Filtrar"}
         </button>
         {canAdjust && (
-          <button className="secondary" onClick={process}>
-            Processar período
+          <button
+            className="secondary"
+            onClick={process}
+            disabled={processing}
+            title="Recalcula horas, atrasos e faltas do período selecionado"
+          >
+            {processing ? "Calculando..." : "Calcular horas do período"}
           </button>
         )}
       </div>
+      {(applied.start !== start ||
+        applied.end !== end ||
+        applied.employeeId !== employeeId) && (
+        <div className="info-box" role="status">
+          Filtros alterados. Clique em Filtrar para atualizar a lista abaixo.
+        </div>
+      )}
       <div className="panel">
+        <div className="list-summary">
+          <div>
+            <h2>Registros encontrados</h2>
+            <p>
+              {items.length} marcações · {brDate(applied.start)} a{" "}
+              {brDate(applied.end)}
+            </p>
+          </div>
+          <label className="detail-toggle">
+            <input
+              type="checkbox"
+              checked={securityDetails}
+              onChange={(e) => setSecurityDetails(e.target.checked)}
+            />
+            Detalhes de segurança
+          </label>
+        </div>
         {items.length === 0 ? (
           loadState.pending || loadState.error ? null : (
             <Empty>Nenhuma marcação no período.</Empty>
@@ -174,9 +225,13 @@ export function PointsPage({
                   <th>Data/hora</th>
                   <th>Tipo</th>
                   <th>Origem</th>
-                  <th>Jornada</th>
-                  <th>GPS</th>
-                  <th>Biometria / aparelho</th>
+                  {securityDetails && (
+                    <>
+                      <th>Jornada</th>
+                      <th>Localização</th>
+                      <th>Biometria / aparelho</th>
+                    </>
+                  )}
                   <th>Foto</th>
                   <th></th>
                 </tr>
@@ -202,74 +257,78 @@ export function PointsPage({
                         {i.source}
                       </Badge>
                     </td>
-                    <td>
-                      {i.schedule_decision ? (
-                        <>
-                          <Badge
-                            tone={
-                              i.schedule_decision === "ALLOWED"
-                                ? "success"
-                                : "neutral"
-                            }
-                          >
-                            {i.schedule_decision}
-                          </Badge>
-                          <div className="muted">
-                            {i.schedule_text ||
-                              i.scheduled_work_date ||
-                              "Jornada validada"}
-                          </div>
-                        </>
-                      ) : i.source === "MANUAL" ? (
-                        <Badge tone="warning">Manual</Badge>
-                      ) : (
-                        <Badge tone="neutral">N/A</Badge>
-                      )}
-                    </td>
-                    <td>
-                      {i.geo_decision ? (
-                        <>
-                          <Badge
-                            tone={
-                              i.geo_decision === "ALLOWED"
-                                ? "success"
-                                : i.geo_decision === "WARNED"
-                                  ? "warning"
-                                  : "neutral"
-                            }
-                          >
-                            {i.geo_decision}
-                          </Badge>
-                          <div className="muted">
-                            {i.distance_meters != null
-                              ? `${Math.round(Number(i.distance_meters))} m · `
-                              : ""}
-                            {i.geo_location_name || ""}
-                            {i.location_mocked ? " · GPS simulado" : ""}
-                          </div>
-                        </>
-                      ) : i.latitude && i.longitude ? (
-                        `${Number(i.latitude).toFixed(5)}, ${Number(i.longitude).toFixed(5)}`
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                    <td>
-                      {i.device_biometric_verified ? (
-                        <>
-                          <Badge tone="success">Biometria validada</Badge>
-                          <div className="muted">
-                            {[i.device_manufacturer, i.device_model]
-                              .filter(Boolean)
-                              .join(" ") || "Dispositivo vinculado"}
-                          </div>
-                        </>
-                      ) : i.source === "MANUAL" ? (
-                        <Badge tone="warning">Manual</Badge>
-                      ) : (
-                        <Badge tone="neutral">N/A</Badge>
-                      )}
-                    </td>
+                    {securityDetails && (
+                      <>
+                        <td>
+                          {i.schedule_decision ? (
+                            <>
+                              <Badge
+                                tone={
+                                  i.schedule_decision === "ALLOWED"
+                                    ? "success"
+                                    : "neutral"
+                                }
+                              >
+                                {i.schedule_decision}
+                              </Badge>
+                              <div className="muted">
+                                {i.schedule_text ||
+                                  i.scheduled_work_date ||
+                                  "Jornada validada"}
+                              </div>
+                            </>
+                          ) : i.source === "MANUAL" ? (
+                            <Badge tone="warning">Manual</Badge>
+                          ) : (
+                            <Badge tone="neutral">N/A</Badge>
+                          )}
+                        </td>
+                        <td>
+                          {i.geo_decision ? (
+                            <>
+                              <Badge
+                                tone={
+                                  i.geo_decision === "ALLOWED"
+                                    ? "success"
+                                    : i.geo_decision === "WARNED"
+                                      ? "warning"
+                                      : "neutral"
+                                }
+                              >
+                                {i.geo_decision}
+                              </Badge>
+                              <div className="muted">
+                                {i.distance_meters != null
+                                  ? `${Math.round(Number(i.distance_meters))} m · `
+                                  : ""}
+                                {i.geo_location_name || ""}
+                                {i.location_mocked ? " · GPS simulado" : ""}
+                              </div>
+                            </>
+                          ) : i.latitude && i.longitude ? (
+                            `${Number(i.latitude).toFixed(5)}, ${Number(i.longitude).toFixed(5)}`
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                        <td>
+                          {i.device_biometric_verified ? (
+                            <>
+                              <Badge tone="success">Biometria validada</Badge>
+                              <div className="muted">
+                                {[i.device_manufacturer, i.device_model]
+                                  .filter(Boolean)
+                                  .join(" ") || "Dispositivo vinculado"}
+                              </div>
+                            </>
+                          ) : i.source === "MANUAL" ? (
+                            <Badge tone="warning">Manual</Badge>
+                          ) : (
+                            <Badge tone="neutral">N/A</Badge>
+                          )}
+                        </td>
+                      </>
+                    )}
                     <td>
                       {i.has_selfie ? (
                         <button className="ghost" onClick={() => viewSelfie(i)}>

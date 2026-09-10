@@ -4,11 +4,13 @@ export function Modal({
   children,
   onClose,
   wide = false,
+  protectChanges = true,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
+  protectChanges?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null),
     close = useRef(onClose),
@@ -89,7 +91,7 @@ export function Modal({
         aria-labelledby={titleId}
         className={`modal ${wide ? "modal-wide" : ""}`}
         onChangeCapture={() => {
-          dirty.current = true;
+          if (protectChanges) dirty.current = true;
         }}
         onClickCapture={(event) => {
           const button = (event.target as HTMLElement).closest("button");

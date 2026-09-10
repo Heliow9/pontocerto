@@ -1,11 +1,19 @@
 import {
   Children,
+  Fragment,
   isValidElement,
   ReactElement,
   ReactNode,
   useEffect,
   useState,
 } from "react";
+function flatChildren(children: ReactNode): ReactNode[] {
+  return Children.toArray(children).flatMap((child) =>
+    isValidElement(child) && child.type === Fragment
+      ? flatChildren((child.props as { children: ReactNode }).children)
+      : [child],
+  );
+}
 export function DataTable({
   children,
   className = "",
@@ -21,7 +29,7 @@ export function DataTable({
     body = sections.find((s) => s.type === "tbody");
   const headerRow = Children.toArray(header?.props.children)[0] as
     ReactElement<any> | undefined;
-  const labels = Children.toArray(headerRow?.props.children).map((cell) =>
+  const labels = flatChildren(headerRow?.props.children).map((cell) =>
     isValidElement(cell) ? (cell.props as any).children : "",
   );
   const rows = Children.toArray(body?.props.children).filter(
@@ -43,7 +51,7 @@ export function DataTable({
         <tbody>
           {rows.slice((current - 1) * 20, current * 20).map((row, index) => (
             <tr key={row.key || index}>
-              {Children.toArray(row.props.children).map((cell, i) =>
+              {flatChildren(row.props.children).map((cell, i) =>
                 isValidElement(cell) ? (
                   <td key={i} {...(cell.props as any)}>
                     <span className="cell-label" aria-hidden="true">

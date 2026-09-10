@@ -42,6 +42,13 @@ async function mock(page: Page, role = "TENANT_ADMIN") {
         user: { ...user, role, employeeId: 1 },
       },
       "/employees": [employee],
+      "/reports/payroll/options": {
+        companies: [{ id: 1, legal_name: "Empresa de Teste" }],
+        employees: [employee],
+        formats: [{ id: "DOMINIO", name: "Domínio Sistemas — TXT", instructions: "Confira os códigos no ERP.", source: null }],
+        events: [{ key: "normal", label: "Horas normais" }],
+      },
+      "/reports/payroll/profiles/1/DOMINIO": { profile: null },
       "/companies": [{ id: 1, legal_name: "Empresa de Teste", active: 1 }],
       "/schedules": [{ id: 1, company_id: 1, name: "Comercial", active: 1 }],
       "/locations": [{ id: 1, company_id: 1, name: "Sede", active: 1 }],
@@ -96,6 +103,42 @@ async function admin(page: Page, hash = "dashboard", role = "TENANT_ADMIN") {
   );
   await page.goto(`/#${hash}`);
 }
+test("busca de funções navega e pode ser fechada sem aviso de alterações", async ({ page }) => {
+  await admin(page);
+  await page.getByRole("button", { name: "Encontrar uma função" }).click();
+  await page.getByLabel("Buscar uma função").fill("folha");
+  await expect(page.getByRole("dialog").getByRole("link", { name: /^Relatórios/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Encontrar uma função" })).toBeFocused();
+  await page.getByRole("button", { name: "Encontrar uma função" }).click();
+  await page.getByLabel("Buscar uma função").fill("senha");
+  await page.getByRole("dialog").getByRole("link", { name: /^Alterar senha/ }).click();
+  await expect(page.getByRole("heading", { name: "Alterar senha", exact: true })).toBeVisible();
+});
+test("busca da equipe filtra imediatamente e permite limpar", async ({ page }) => {
+  await admin(page, "employees");
+  await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
+  await page.getByLabel("Buscar por nome, CPF ou matrícula").fill("ninguém");
+  await expect(page.getByText("Ana Oliveira", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Limpar filtros" }).click();
+  await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
+});
+test("detalhes técnicos do ponto são opcionais e a ajuda acompanha a página", async ({ page }) => {
+  await admin(page, "points");
+  await expect(page.getByRole("columnheader", { name: "Biometria / aparelho" })).toHaveCount(0);
+  await page.getByLabel("Detalhes de segurança").check();
+  await expect(page.getByRole("columnheader", { name: "Biometria / aparelho" })).toBeVisible();
+  expect(await page.locator("td td").count()).toBe(0);
+  await page.getByRole("button", { name: "Como usar esta página" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Consulte as entradas e saídas");
+});
+test("atalho da contabilidade abre diretamente o destino correto", async ({ page }) => {
+  await admin(page);
+  await page.getByRole("link", { name: /Enviar para a contabilidade/ }).click();
+  await expect(page).toHaveURL(/#reports\?tab=payroll/);
+  await expect(page.getByRole("button", { name: "Exportar para ERP", exact: true })).toHaveAttribute("aria-pressed", "true");
+});
 test("menu móvel não ocupa a tela e tabelas viram cartões", async ({
   page,
 }) => {

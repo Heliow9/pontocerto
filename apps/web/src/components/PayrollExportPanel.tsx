@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Icon } from "./Icon";
 import { api } from "../api";
 import {
   apiMessage,
@@ -88,6 +89,21 @@ export function PayrollExportPanel({
   const [error, setError] = useState("");
   const [reload, setReload] = useState(0);
   const [result, setResult] = useState<ExportResult | null>(null);
+  const [step, setStep] = useState(0);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const errorRef = useRef<HTMLDivElement>(null);
+  const steps = [
+    "Período e destino",
+    "Funcionários",
+    "Códigos da folha",
+    "Conferência",
+  ];
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, [step]);
+  useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
   const key = `${companyId}:${format}`;
 
   useEffect(() => {
@@ -143,12 +159,83 @@ export function PayrollExportPanel({
   );
   const layout = options?.formats.find((f) => f.id === format);
   const ready = Boolean(companyId && options && profileReady === key);
+  function validateStep(index: number): string {
+    if (!ready)
+      return "Aguarde o carregamento das configurações. Se houver uma falha, tente recarregar.";
+    if (index === 0) {
+      if (!companyId || !start || !end || !competence || start > end)
+        return "Confira a empresa, o período e a competência da folha.";
+      if (end >= localIsoDate())
+        return "Escolha um período até ontem. O dia de hoje ainda pode ter pontos em andamento.";
+      if ((Date.parse(end) - Date.parse(start)) / 86400000 >= 62)
+        return "Selecione um período de até 62 dias.";
+    }
+    if (index === 1) {
+      if (!selected.length)
+        return "Selecione pelo menos um funcionário para continuar.";
+      const codes = new Set<number>();
+      for (const employee of employees.filter((e) => selected.includes(e.id))) {
+        if (!employee.work_schedule_id)
+          return `${employee.name} está sem jornada. Vincule uma jornada no cadastro antes de exportar.`;
+        const code = (
+          profile.employeeCodes[String(employee.id)] ??
+          employee.registration_number ??
+          ""
+        ).trim();
+        if (
+          !/^\d+$/.test(code) ||
+          code.length > (format === "SAGE" ? 5 : 10) ||
+          Number(code) === 0
+        )
+          return `Confira a matrícula de ${employee.name}: use o código numérico do funcionário no ERP.`;
+        if (codes.has(Number(code)))
+          return "Dois funcionários estão com a mesma matrícula no ERP. Corrija antes de continuar.";
+        codes.add(Number(code));
+      }
+    }
+    if (index === 2) {
+      if (
+        !/^\d{1,10}$/.test(profile.companyCode.trim()) ||
+        Number(profile.companyCode) === 0
+      )
+        return "Informe o código numérico da empresa no ERP. Sua contabilidade pode fornecer esse código.";
+      if (format === "DOMINIO" && !/^\d{1,2}$/.test(profile.processCode.trim()))
+        return "Confira o tipo de processo no Domínio: use até dois dígitos.";
+      const codes = Object.values(profile.events)
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (!codes.length)
+        return "Informe pelo menos um código de rubrica para definir quais horas serão enviadas.";
+      if (
+        codes.some(
+          (c) =>
+            !/^\d+$/.test(c) ||
+            !Number(c) ||
+            c.length > (format === "SAGE" ? 5 : format === "DOMINIO" ? 4 : 10),
+        )
+      )
+        return "Confira as rubricas: use códigos numéricos válidos do ERP.";
+      if (new Set(codes.map(Number)).size !== codes.length)
+        return "Use um código de rubrica diferente para cada tipo de hora.";
+    }
+    return "";
+  }
+  function advance() {
+    const issue = validateStep(step);
+    setError(issue);
+    if (!issue) setStep((s) => s + 1);
+  }
   function toggle(id: number) {
     setSelected((ids) =>
       ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
     );
   }
   async function save() {
+    const issue = validateStep(2);
+    if (issue) {
+      setError(issue);
+      return;
+    }
     setBusy("save");
     setError("");
     try {
@@ -165,6 +252,18 @@ export function PayrollExportPanel({
   }
   async function generate(event: React.FormEvent) {
     event.preventDefault();
+    if (step < 2) {
+      advance();
+      return;
+    }
+    for (let index = 0; index <= 2; index++) {
+      const issue = validateStep(index);
+      if (issue) {
+        setStep(index);
+        setError(issue);
+        return;
+      }
+    }
     setResult(null);
     setError("");
     if (!selected.length) {
@@ -191,6 +290,7 @@ export function PayrollExportPanel({
         { timeout: 120000 },
       );
       setResult(data);
+      setStep(3);
       notify("Arquivo preparado. Confira os eventos antes de baixar.");
     } catch (err) {
       setError(apiMessage(err));
@@ -216,29 +316,62 @@ export function PayrollExportPanel({
   }
   return (
     <section className="payroll-export" aria-label="Exportação para ERP">
-      <div className="panel">
-        <h2>Exportar pontos para a folha</h2>
+      <div className="export-intro">
+        <span className="eyebrow">EXPORTAÇÃO GUIADA</span>
+        <h2>Da conferência à contabilidade, passo a passo.</h2>
         <p>
-          Selecione uma empresa e um ou mais funcionários. O arquivo reúne as
-          horas apuradas no período nas rubricas usadas pela sua contabilidade.
+          Escolha o período, selecione a equipe e confira as horas antes de
+          baixar.
         </p>
-        <p className="muted">
-          Exporte dias encerrados. Horas extras são apuradas em total, sem
-          separação de percentuais. Banco de horas, adicional noturno e DSR não
-          são enviados por esta exportação.
-        </p>
+        <details className="export-limits">
+          <summary>O que este arquivo inclui?</summary>
+          <p className="muted">
+            Exporte dias encerrados. Horas extras são apuradas em total, sem
+            separação de percentuais. Banco de horas, adicional noturno e DSR
+            não são enviados por esta exportação.
+          </p>
+        </details>
       </div>
-      {error && (
-        <div className="panel" role="alert">
-          <p className="negative">{error}</p>
+      <nav className="export-steps" aria-label="Etapas da exportação">
+        {steps.map((label, index) => (
           <button
             type="button"
-            className="secondary"
-            disabled={!!busy}
-            onClick={() => setReload((n) => n + 1)}
+            key={label}
+            disabled={!!busy || (index > step && !(index === 3 && result))}
+            aria-current={step === index ? "step" : undefined}
+            onClick={() => {
+              setStep(index);
+              setError("");
+            }}
           >
-            Recarregar configurações
+            <span>
+              {index < step ? <Icon name="check" size={16} /> : index + 1}
+            </span>
+            <strong>{label}</strong>
           </button>
+        ))}
+      </nav>
+      <h2 className="step-heading" ref={headingRef} tabIndex={-1}>
+        Etapa {step + 1} de 4 · {steps[step]}
+      </h2>
+      {error && (
+        <div
+          className="panel export-error"
+          role="alert"
+          ref={errorRef}
+          tabIndex={-1}
+        >
+          <p className="negative">{error}</p>
+          {!ready && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={!!busy}
+              onClick={() => setReload((n) => n + 1)}
+            >
+              Recarregar configurações
+            </button>
+          )}
         </div>
       )}
       {!options && !error && (
@@ -248,10 +381,14 @@ export function PayrollExportPanel({
         <div className="panel">Nenhuma empresa disponível para exportação.</div>
       )}
       {options && options.companies.length > 0 && (
-        <form onSubmit={generate}>
+        <form onSubmit={generate} noValidate hidden={step === 3}>
           <fieldset className="payroll-fieldset" disabled={!!busy}>
-            <div className="panel">
+            <div className="panel" hidden={step !== 0}>
               <h3>1. Empresa, destino e período</h3>
+              <p>
+                Qual período você vai enviar? A competência é o mês da folha que
+                receberá essas horas.
+              </p>
               <div className="form-grid">
                 <label>
                   Empresa para exportação
@@ -312,18 +449,42 @@ export function PayrollExportPanel({
                   />
                 </label>
               </div>
-              <p className="payroll-guide">
-                {layout?.instructions}{" "}
-                {layout?.source && (
-                  <a href={layout.source} target="_blank" rel="noreferrer">
-                    Consultar documentação do ERP
-                  </a>
-                )}
-              </p>
+              {format === "QUESTOR" && (
+                <p className="info-box">
+                  O modelo do Questor precisa ser validado com a contabilidade
+                  antes da primeira importação.
+                </p>
+              )}
+              <details className="payroll-guide">
+                <summary>
+                  Orientações para importar no{" "}
+                  {format === "CSV"
+                    ? "ERP"
+                    : format === "SAGE"
+                      ? "Sage/IOB"
+                      : format === "DOMINIO"
+                        ? "Domínio"
+                        : "Questor"}
+                </summary>
+                <p>
+                  {layout?.instructions}{" "}
+                  {layout?.source && (
+                    <a href={layout.source} target="_blank" rel="noreferrer">
+                      Consultar documentação do ERP
+                    </a>
+                  )}
+                </p>
+              </details>
             </div>
             <fieldset className="payroll-fieldset" disabled={!ready}>
-              <div className="panel">
-                <h3>2. Códigos e rubricas no ERP</h3>
+              <div className="panel" hidden={step !== 2}>
+                <h3>3. Como as horas entram na folha?</h3>
+                <p>
+                  Rubricas são os códigos dos eventos na folha, como horas
+                  normais e extras. Use os códigos fornecidos pela
+                  contabilidade. A configuração salva é carregada nas próximas
+                  exportações.
+                </p>
                 {!ready && !error && (
                   <p role="status">Carregando configuração da empresa...</p>
                 )}
@@ -414,8 +575,8 @@ export function PayrollExportPanel({
                     : "Salvar configuração da empresa"}
                 </button>
               </div>
-              <div className="panel">
-                <h3>3. Funcionários e matrículas</h3>
+              <div className="panel" hidden={step !== 1}>
+                <h3>2. Quem entra nesta exportação?</h3>
                 <p>
                   Confira o código de cada funcionário no ERP. Por padrão,
                   usamos a matrícula do cadastro. Nesta etapa estão disponíveis
@@ -467,7 +628,7 @@ export function PayrollExportPanel({
                     <tbody>
                       {visible.map((e) => (
                         <tr key={e.id}>
-                          <td>
+                          <td data-label="Selecionar">
                             <input
                               type="checkbox"
                               aria-label={`Selecionar ${e.name}`}
@@ -475,7 +636,7 @@ export function PayrollExportPanel({
                               onChange={() => toggle(e.id)}
                             />
                           </td>
-                          <td>
+                          <td data-label="Funcionário">
                             {e.name}
                             {!e.work_schedule_id && (
                               <small className="negative">
@@ -484,7 +645,7 @@ export function PayrollExportPanel({
                               </small>
                             )}
                           </td>
-                          <td>
+                          <td data-label="Matrícula no ERP">
                             <input
                               aria-label={`Matrícula no ERP de ${e.name}`}
                               inputMode="numeric"
@@ -519,21 +680,48 @@ export function PayrollExportPanel({
                   As matrículas alteradas são incluídas ao salvar a configuração
                   da empresa. Gere um arquivo separado para cada empresa.
                 </p>
-                <button
-                  className="primary"
-                  type="submit"
-                  disabled={!selected.length}
-                >
-                  {busy === "generate"
-                    ? "Apurando e preparando arquivo..."
-                    : "Preparar exportação"}
-                </button>
               </div>
             </fieldset>
+            <div className="wizard-footer">
+              <div>
+                <strong>
+                  {
+                    options.companies.find((c) => String(c.id) === companyId)
+                      ?.legal_name
+                  }
+                </strong>
+                <span>
+                  {brDate(start)} a {brDate(end)} · {selected.length}{" "}
+                  selecionados
+                </span>
+              </div>
+              {step > 0 && (
+                <button
+                  className="ghost"
+                  type="button"
+                  onClick={() => {
+                    setStep((s) => s - 1);
+                    setError("");
+                  }}
+                >
+                  Voltar
+                </button>
+              )}
+              <button className="primary" type="submit" disabled={!ready}>
+                {busy === "generate"
+                  ? "Preparando arquivo..."
+                  : step === 0
+                    ? "Continuar para funcionários"
+                    : step === 1
+                      ? "Continuar para códigos da folha"
+                      : "Preparar exportação"}
+                <Icon name="arrow" size={17} />
+              </button>
+            </div>
           </fieldset>
         </form>
       )}
-      {result && (
+      {result && step === 3 && (
         <div className="panel" aria-label="Conferência da exportação">
           <div className="toolbar">
             <div>
@@ -549,6 +737,9 @@ export function PayrollExportPanel({
             </div>
             <button type="button" className="primary" onClick={download}>
               Baixar arquivo para ERP
+            </button>
+            <button type="button" className="ghost" onClick={() => setStep(2)}>
+              Revisar configuração
             </button>
           </div>
           {result.warnings.length > 0 && (

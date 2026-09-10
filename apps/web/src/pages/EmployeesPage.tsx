@@ -55,7 +55,7 @@ export function EmployeesPage({
   const loadState = useLoadState();
   const fetchData = () =>
     Promise.all([
-      api.get("/employees", { params: { search, includeInactive: "1" } }),
+      api.get("/employees", { params: { includeInactive: "1" } }),
       api.get("/companies"),
       api.get("/schedules"),
       api.get("/locations"),
@@ -218,6 +218,28 @@ export function EmployeesPage({
     }
   }
 
+  const normalizedSearch = search
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+  const filteredItems = items.filter(
+    (i) =>
+      `${i.name} ${i.cpf || ""} ${i.registration_number || ""}`
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .includes(normalizedSearch) &&
+      (!companyFilter || String(i.company_id) === companyFilter) &&
+      (statusFilter === "all" ||
+        Boolean(i.active) === (statusFilter === "active")) &&
+      (!needs ||
+        (needs === "schedule"
+          ? !i.schedule_name
+          : needs === "location"
+            ? !i.location_names
+            : !Number(i.device_count))),
+  );
   return (
     <>
       <LoadState state={loadState} retry={load} />
@@ -232,6 +254,42 @@ export function EmployeesPage({
           )
         }
       />
+      <div className="employee-overview" aria-label="Resumo da equipe">
+        <button
+          aria-pressed={statusFilter === "active" && !needs}
+          onClick={() => {
+            setStatusFilter("active");
+            setNeeds("");
+          }}
+        >
+          <strong>{items.filter((i) => i.active).length}</strong>
+          <span>Funcionários ativos</span>
+        </button>
+        <button
+          aria-pressed={needs === "schedule"}
+          onClick={() => {
+            setStatusFilter("active");
+            setNeeds("schedule");
+          }}
+        >
+          <strong>
+            {items.filter((i) => i.active && !i.schedule_name).length}
+          </strong>
+          <span>Sem jornada definida</span>
+        </button>
+        <button
+          aria-pressed={needs === "location"}
+          onClick={() => {
+            setStatusFilter("active");
+            setNeeds("location");
+          }}
+        >
+          <strong>
+            {items.filter((i) => i.active && !i.location_names).length}
+          </strong>
+          <span>Sem local vinculado</span>
+        </button>
+      </div>
       <div className="toolbar">
         <input
           className="search"
@@ -242,7 +300,7 @@ export function EmployeesPage({
           onKeyDown={(e) => e.key === "Enter" && load()}
         />
         <button className="ghost" onClick={load}>
-          Buscar
+          Atualizar lista
         </button>
         <label>
           Empresa
@@ -281,6 +339,28 @@ export function EmployeesPage({
       </div>
 
       <div className="panel">
+        <div className="list-summary">
+          <div>
+            <h2>Sua equipe</h2>
+            <p aria-live="polite">
+              {filteredItems.length} de {items.length} funcionários · a busca
+              atualiza enquanto você digita
+            </p>
+          </div>
+          {(search || companyFilter || needs || statusFilter !== "active") && (
+            <button
+              className="ghost"
+              onClick={() => {
+                setSearch("");
+                setCompanyFilter("");
+                setNeeds("");
+                setStatusFilter("active");
+              }}
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
         {items.length === 0 ? (
           loadState.pending || loadState.error ? null : (
             <Empty>Nenhum funcionário encontrado.</Empty>
@@ -303,101 +383,85 @@ export function EmployeesPage({
                 </tr>
               </thead>
               <tbody>
-                {items
-                  .filter(
-                    (i) =>
-                      (!companyFilter ||
-                        String(i.company_id) === companyFilter) &&
-                      (statusFilter === "all" ||
-                        Boolean(i.active) === (statusFilter === "active")) &&
-                      (!needs ||
-                        (needs === "schedule"
-                          ? !i.schedule_name
-                          : needs === "location"
-                            ? !i.location_names
-                            : !Number(i.device_count))),
-                  )
-                  .map((i) => (
-                    <tr key={i.id}>
-                      <td>
-                        <strong>{i.name}</strong>
-                        <div className="muted">
-                          {i.cpf || "CPF não informado"}
-                        </div>
-                      </td>
-                      <td>{i.company_name}</td>
-                      <td>{i.registration_number || "-"}</td>
-                      <td>{i.position_name || "-"}</td>
-                      <td>
-                        {i.schedule_name || (
-                          <span className="warning-text">Sem jornada</span>
-                        )}
-                        <div className="muted">
-                          {i.location_names || "Sem local vinculado"}
-                        </div>
-                      </td>
-                      <td>{brDate(i.admission_date)}</td>
-                      <td>
-                        <Badge
-                          tone={i.biometric_exempt ? "neutral" : "success"}
-                        >
-                          {i.biometric_exempt ? "Dispensada" : "Obrigatória"}
-                        </Badge>
-                      </td>
-                      <td>
-                        <Badge
-                          tone={
-                            Number(i.device_count || 0) > 0
-                              ? "success"
-                              : "warning"
-                          }
-                        >
-                          {Number(i.device_count || 0) > 0
-                            ? `${i.device_count} vinculado(s)`
-                            : "Pendente"}
-                        </Badge>
-                      </td>
-                      <td>
-                        <Badge tone={i.active ? "success" : "neutral"}>
-                          {i.active ? "Ativo" : "Inativo"}
-                        </Badge>
-                      </td>
-                      <td className="actions">
-                        {editable && (
-                          <button className="ghost" onClick={() => open(i)}>
-                            Editar
+                {filteredItems.map((i) => (
+                  <tr key={i.id}>
+                    <td>
+                      <strong>{i.name}</strong>
+                      <div className="muted">
+                        {i.cpf || "CPF não informado"}
+                      </div>
+                    </td>
+                    <td>{i.company_name}</td>
+                    <td>{i.registration_number || "-"}</td>
+                    <td>{i.position_name || "-"}</td>
+                    <td>
+                      {i.schedule_name || (
+                        <span className="warning-text">Sem jornada</span>
+                      )}
+                      <div className="muted">
+                        {i.location_names || "Sem local vinculado"}
+                      </div>
+                    </td>
+                    <td>{brDate(i.admission_date)}</td>
+                    <td>
+                      <Badge tone={i.biometric_exempt ? "neutral" : "success"}>
+                        {i.biometric_exempt ? "Dispensada" : "Obrigatória"}
+                      </Badge>
+                    </td>
+                    <td>
+                      <Badge
+                        tone={
+                          Number(i.device_count || 0) > 0
+                            ? "success"
+                            : "warning"
+                        }
+                      >
+                        {Number(i.device_count || 0) > 0
+                          ? `${i.device_count} vinculado(s)`
+                          : "Pendente"}
+                      </Badge>
+                    </td>
+                    <td>
+                      <Badge tone={i.active ? "success" : "neutral"}>
+                        {i.active ? "Ativo" : "Inativo"}
+                      </Badge>
+                    </td>
+                    <td className="actions">
+                      {editable && (
+                        <button className="ghost" onClick={() => open(i)}>
+                          Editar
+                        </button>
+                      )}
+                      {editable && (
+                        <details className="row-actions">
+                          <summary>Mais ações</summary>
+                          <button
+                            className="ghost"
+                            onClick={() => toggleBiometric(i)}
+                          >
+                            {i.biometric_exempt
+                              ? "Habilitar biometria"
+                              : "Desabilitar biometria"}
                           </button>
-                        )}
-                        {editable && (
-                          <details className="row-actions">
-                            <summary>Mais ações</summary>
+                          {Number(i.device_count || 0) > 0 && (
                             <button
                               className="ghost"
-                              onClick={() => toggleBiometric(i)}
+                              onClick={() => revokeDevices(i)}
                             >
-                              {i.biometric_exempt
-                                ? "Habilitar biometria"
-                                : "Desabilitar biometria"}
+                              Revogar aparelho
                             </button>
-                            {Number(i.device_count || 0) > 0 && (
-                              <button
-                                className="ghost"
-                                onClick={() => revokeDevices(i)}
-                              >
-                                Revogar aparelho
-                              </button>
-                            )}
-                            <button
-                              className="danger-link"
-                              onClick={() => deactivate(i)}
-                            >
-                              Inativar
-                            </button>
-                          </details>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          )}
+                          <button
+                            className="danger-link"
+                            onClick={() => deactivate(i)}
+                          >
+                            Inativar
+                          </button>
+                        </details>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </DataTable>
           </div>
@@ -422,6 +486,14 @@ export function EmployeesPage({
           ) : (
             <AsyncForm className="form-grid" onSubmit={save}>
               <div className="section-label span-2">Dados pessoais</div>
+              <div className="form-intro span-2">
+                <strong>Organize o cadastro em três partes</strong>
+                <p>
+                  Identifique o funcionário, vincule sua jornada e os locais de
+                  trabalho, depois configure o acesso ao aplicativo. Dados
+                  complementares podem ser preenchidos depois.
+                </p>
+              </div>
               <label className="span-2">
                 Nome completo
                 <input
