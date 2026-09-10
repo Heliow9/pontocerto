@@ -1,5 +1,10 @@
 import { pool } from "../db/pool.js";
-import { datesBetween, dateTimeMinutes, onlyTime, weekdayOf } from "../utils/date.js";
+import {
+  datesBetween,
+  dateTimeMinutes,
+  onlyTime,
+  weekdayOf,
+} from "../utils/date.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 
 type EmployeeRow = {
@@ -48,7 +53,7 @@ const absenceStatusMap: Record<string, string> = {
   AFASTAMENTO: "AFASTAMENTO",
   LICENCA: "LICENCA",
   ABONO: "ABONO",
-  OUTRO: "ABONO"
+  OUTRO: "ABONO",
 };
 
 function pairWorkedMinutes(entries: TimeEntryRow[]): number {
@@ -70,22 +75,34 @@ export async function processPeriod(params: {
   start: string;
   end: string;
   employeeId?: number;
+  employeeIds?: number[];
 }) {
-  const { tenantId, start, end, employeeId } = params;
+  const { tenantId, start, end, employeeId, employeeIds: selectedEmployeeIds } = params;
+  if (selectedEmployeeIds && !selectedEmployeeIds.length)
+    return { processed: 0, employees: 0, days: 0 };
 
   const employeeSql = employeeId
     ? `SELECT id, company_id, work_schedule_id FROM employees
        WHERE tenant_id = ? AND active = 1 AND id = ?`
-    : `SELECT id, company_id, work_schedule_id FROM employees
+    : selectedEmployeeIds
+      ? `SELECT id, company_id, work_schedule_id FROM employees
+       WHERE tenant_id = ? AND active = 1 AND id IN (${selectedEmployeeIds.map(() => "?").join(",")})`
+      : `SELECT id, company_id, work_schedule_id FROM employees
        WHERE tenant_id = ? AND active = 1`;
-  const employeeParams = employeeId ? [tenantId, employeeId] : [tenantId];
+  const employeeParams = employeeId
+    ? [tenantId, employeeId]
+    : selectedEmployeeIds
+      ? [tenantId, ...selectedEmployeeIds]
+      : [tenantId];
   const [employeeRows] = await pool.query<any[]>(employeeSql, employeeParams);
 
   if (employeeId && employeeRows.length === 0) {
     throw new Error("Funcionário não encontrado neste tenant.");
   }
 
-  const scheduleIds = [...new Set(employeeRows.map((e) => e.work_schedule_id).filter(Boolean))] as number[];
+  const scheduleIds = [
+    ...new Set(employeeRows.map((e) => e.work_schedule_id).filter(Boolean)),
+  ] as number[];
   const scheduleById = new Map<number, ScheduleRow>();
   const dayByScheduleWeekday = new Map<string, ScheduleDayRow>();
 
@@ -95,7 +112,7 @@ export async function processPeriod(params: {
       `SELECT id, tolerance_late_minutes, tolerance_overtime_minutes
          FROM work_schedules
         WHERE tenant_id = ? AND id IN (${placeholders})`,
-      [tenantId, ...scheduleIds]
+      [tenantId, ...scheduleIds],
     );
     for (const row of schedules) scheduleById.set(row.id, row);
 
@@ -103,9 +120,10 @@ export async function processPeriod(params: {
       `SELECT work_schedule_id, weekday, is_day_off, expected_minutes
          FROM work_schedule_days
         WHERE tenant_id = ? AND work_schedule_id IN (${placeholders})`,
-      [tenantId, ...scheduleIds]
+      [tenantId, ...scheduleIds],
     );
-    for (const row of days) dayByScheduleWeekday.set(`${row.work_schedule_id}:${row.weekday}`, row);
+    for (const row of days)
+      dayByScheduleWeekday.set(`${row.work_schedule_id}:${row.weekday}`, row);
   }
 
   const employeeIds = employeeRows.map((e) => e.id);
@@ -119,7 +137,7 @@ export async function processPeriod(params: {
           AND employee_id IN (${placeholders})
           AND DATE(registered_at) BETWEEN ? AND ?
         ORDER BY employee_id, registered_at`,
-      [tenantId, ...employeeIds, start, end]
+      [tenantId, ...employeeIds, start, end],
     );
     for (const entry of entries) {
       const date = entry.registered_at.slice(0, 10);
@@ -134,7 +152,7 @@ export async function processPeriod(params: {
     `SELECT company_id, holiday_date, name
        FROM holidays
       WHERE tenant_id = ? AND holiday_date BETWEEN ? AND ?`,
-    [tenantId, start, end]
+    [tenantId, start, end],
   );
 
   const [absences] = await pool.query<any[]>(
@@ -143,7 +161,7 @@ export async function processPeriod(params: {
       WHERE tenant_id = ?
         AND status = 'APPROVED'
         AND start_date <= ? AND end_date >= ?`,
-    [tenantId, end, start]
+    [tenantId, end, start],
   );
 
   const days = datesBetween(start, end);
@@ -162,14 +180,22 @@ export async function processPeriod(params: {
       const entries = entriesByEmployeeDate.get(`${employee.id}:${date}`) || [];
       const workedMinutes = pairWorkedMinutes(entries);
       const pointsText = entries
-        .map((entry) => `${onlyTime(entry.registered_at)}${entry.manually_adjusted ? "*" : ""}`)
+        .map(
+          (entry) =>
+            `${onlyTime(entry.registered_at)}${entry.manually_adjusted ? "*" : ""}`,
+        )
         .join(" ");
 
       const holiday = holidays.find(
-        (h) => h.holiday_date.slice(0, 10) === date && (h.company_id === null || Number(h.company_id) === employee.company_id)
+        (h) =>
+          h.holiday_date.slice(0, 10) === date &&
+          (h.company_id === null ||
+            Number(h.company_id) === employee.company_id),
       );
       const absence = absences.find(
-        (a) => Number(a.employee_id) === employee.id && dateInRange(date, a.start_date, a.end_date)
+        (a) =>
+          Number(a.employee_id) === employee.id &&
+          dateInRange(date, a.start_date, a.end_date),
       );
 
       let status = "NORMAL";
@@ -206,7 +232,9 @@ export async function processPeriod(params: {
         const shortage = Math.max(0, expectedMinutes - workedMinutes);
         const overage = Math.max(0, workedMinutes - expectedMinutes);
         const lateTolerance = Number(schedule?.tolerance_late_minutes || 0);
-        const overtimeTolerance = Number(schedule?.tolerance_overtime_minutes || 0);
+        const overtimeTolerance = Number(
+          schedule?.tolerance_overtime_minutes || 0,
+        );
         lateMinutes = shortage > lateTolerance ? shortage : 0;
         overtimeMinutes = overage > overtimeTolerance ? overage : 0;
       }
@@ -240,8 +268,8 @@ export async function processPeriod(params: {
           overtimeMinutes,
           lateMinutes,
           absenceMinutes,
-          timeBankMinutes
-        ]
+          timeBankMinutes,
+        ],
       );
       processed += 1;
     }

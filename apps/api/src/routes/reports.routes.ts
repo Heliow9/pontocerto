@@ -6,9 +6,11 @@ import { requireRole } from "../middlewares/require-role.js";
 import { minutesToHHMM } from "../utils/time.js";
 import { isIsoDate, ptDate, weekdayShortPt } from "../utils/date.js";
 import { processPeriod } from "../services/calculation.service.js";
+import { payrollExportsRouter } from "./payroll-exports.routes.js";
 
 export const reportsRouter = Router();
 reportsRouter.use(authMiddleware, requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH", "GESTOR", "SUPERVISOR"));
+reportsRouter.use("/payroll", payrollExportsRouter);
 
 async function loadReport(tenantId: number, employeeId: number, start: string, end: string) {
   await processPeriod({ tenantId, employeeId, start, end });

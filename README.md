@@ -117,6 +117,10 @@ No painel Web → Empresas:
 - bloquear fora da janela da jornada;
 - configurar margem antes/depois da jornada conforme a operação.
 
+## Exportação para ERPs de folha
+
+No painel da empresa, acesse **Relatórios → Exportar para ERP** para selecionar funcionários, configurar rubricas/matrículas, conferir os eventos e baixar o arquivo. Disponíveis TXT Domínio, TXT Sage/IOB e CSVs configuráveis para Questor e outros ERPs. Consulte [configuração, compatibilidade e limites](docs/EXPORTACAO_ERP.md). A funcionalidade utiliza a migração `008_payroll_export_profiles.sql`.
+
 ## Primeiro acesso do funcionário
 
 No aplicativo:

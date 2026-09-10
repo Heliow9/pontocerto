@@ -5,6 +5,8 @@ import { api } from "../api";
 import { Employee } from "../types";
 import { Empty, PageHeader } from "../components/Ui";
 import { apiMessage, brDate, minutesToHHMM, monthRange } from "../utils";
+import { PayrollExportPanel } from "../components/PayrollExportPanel";
+import { useAccess } from "../components/Access";
 
 export function ReportsPage({
   notify,
@@ -12,6 +14,8 @@ export function ReportsPage({
   notify: (m: string, t?: "ok" | "error") => void;
 }) {
   const range = monthRange();
+  const { canManage } = useAccess();
+  const [tab, setTab] = useState<"monthly" | "payroll">("monthly");
   const [employees, setEmployees] = useState<Employee[]>([]),
     [employeeId, setEmployeeId] = useState(""),
     [start, setStart] = useState(range.start),
@@ -85,154 +89,175 @@ export function ReportsPage({
     <>
       <PageHeader
         title="Relatórios"
-        subtitle="Espelho mensal no padrão definido para a folha de ponto"
+        subtitle="Espelho mensal e exportação de pontos para a folha de pagamento"
       />
-      <LoadState state={state} retry={loadEmployees} />
-      <div className="toolbar filters">
-        <label>
-          Funcionário
-          <select
-            disabled={loading}
-            value={employeeId}
-            onChange={(e) => {
-              setEmployeeId(e.target.value);
-              setReport(null);
-            }}
+      {canManage && (
+        <div className="toolbar" aria-label="Tipo de relatório">
+          <button
+            className={tab === "monthly" ? "primary" : "secondary"}
+            aria-pressed={tab === "monthly"}
+            onClick={() => setTab("monthly")}
           >
-            <option value="">Selecione</option>
-            {employees.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Início
-          <input
-            disabled={loading}
-            type="date"
-            value={start}
-            onChange={(e) => {
-              setStart(e.target.value);
-              setReport(null);
-            }}
-          />
-        </label>
-        <label>
-          Fim
-          <input
-            disabled={loading}
-            type="date"
-            value={end}
-            onChange={(e) => {
-              setEnd(e.target.value);
-              setReport(null);
-            }}
-          />
-        </label>
-        <button className="secondary" onClick={preview} disabled={loading}>
-          {loading ? "Processando..." : "Visualizar"}
-        </button>
-        <button
-          className="primary"
-          onClick={pdf}
-          disabled={loading || !employeeId}
-        >
-          Baixar PDF
-        </button>
-      </div>
-      {!report ? (
-        <div className="panel">
-          <Empty>
-            Selecione o funcionário e clique em Visualizar. O relatório mostra
-            carga prevista, horas trabalhadas, extras, atrasos e faltas.
-          </Empty>
+            Espelho mensal
+          </button>
+          <button
+            className={tab === "payroll" ? "primary" : "secondary"}
+            aria-pressed={tab === "payroll"}
+            onClick={() => setTab("payroll")}
+          >
+            Exportar para ERP
+          </button>
         </div>
-      ) : (
-        <>
-          <div className="report-head panel">
-            <div>
-              <h2>{report.employee.name}</h2>
-              <p>
-                {report.employee.company_name} · Matrícula{" "}
-                {report.employee.registration_number || "-"}
-              </p>
-            </div>
-            <div className="report-totals">
-              <span>
-                CH <b>{minutesToHHMM(totals.expected)}</b>
-              </span>
-              <span>
-                Normais <b>{minutesToHHMM(totals.normal)}</b>
-              </span>
-              <span>
-                Extras <b>{minutesToHHMM(totals.extra)}</b>
-              </span>
-              <span>
-                Atraso <b>{minutesToHHMM(-totals.late)}</b>
-              </span>
-              <span>
-                Falta <b>{minutesToHHMM(-totals.absence)}</b>
-              </span>
-            </div>
-          </div>
-          <div className="panel">
-            <div className="table-wrap">
-              <DataTable className="report-table">
-                <thead>
-                  <tr>
-                    <th>DATA</th>
-                    <th>STATUS</th>
-                    <th>PONTOS</th>
-                    <th>Carga prevista</th>
-                    <th>Horas normais</th>
-                    <th>Horas extras</th>
-                    <th>Atrasos</th>
-                    <th>Faltas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {report.days.map((d: any) => (
-                    <tr key={d.work_date}>
-                      <td>{brDate(d.work_date)}</td>
-                      <td>
-                        {d.status === "NORMAL"
-                          ? ""
-                          : d.status_label || d.status}
-                      </td>
-                      <td>{d.points_text || ""}</td>
-                      <td>
-                        {d.expected_minutes
-                          ? minutesToHHMM(d.expected_minutes)
-                          : ""}
-                      </td>
-                      <td>
-                        {d.normal_minutes
-                          ? minutesToHHMM(d.normal_minutes)
-                          : ""}
-                      </td>
-                      <td>
-                        {d.overtime_minutes
-                          ? minutesToHHMM(d.overtime_minutes)
-                          : ""}
-                      </td>
-                      <td className="negative">
-                        {d.late_minutes ? minutesToHHMM(-d.late_minutes) : ""}
-                      </td>
-                      <td className="negative">
-                        {d.absence_minutes
-                          ? minutesToHHMM(-d.absence_minutes)
-                          : ""}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </DataTable>
-            </div>
-          </div>
-        </>
       )}
+      {canManage && tab === "payroll" && <PayrollExportPanel notify={notify} />}
+      <section hidden={canManage && tab === "payroll"}>
+        <LoadState state={state} retry={loadEmployees} />
+        <div className="toolbar filters">
+          <label>
+            Funcionário
+            <select
+              disabled={loading}
+              value={employeeId}
+              onChange={(e) => {
+                setEmployeeId(e.target.value);
+                setReport(null);
+              }}
+            >
+              <option value="">Selecione</option>
+              {employees.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Início
+            <input
+              disabled={loading}
+              type="date"
+              value={start}
+              onChange={(e) => {
+                setStart(e.target.value);
+                setReport(null);
+              }}
+            />
+          </label>
+          <label>
+            Fim
+            <input
+              disabled={loading}
+              type="date"
+              value={end}
+              onChange={(e) => {
+                setEnd(e.target.value);
+                setReport(null);
+              }}
+            />
+          </label>
+          <button className="secondary" onClick={preview} disabled={loading}>
+            {loading ? "Processando..." : "Visualizar"}
+          </button>
+          <button
+            className="primary"
+            onClick={pdf}
+            disabled={loading || !employeeId}
+          >
+            Baixar PDF
+          </button>
+        </div>
+        {!report ? (
+          <div className="panel">
+            <Empty>
+              Selecione o funcionário e clique em Visualizar. O relatório mostra
+              carga prevista, horas trabalhadas, extras, atrasos e faltas.
+            </Empty>
+          </div>
+        ) : (
+          <>
+            <div className="report-head panel">
+              <div>
+                <h2>{report.employee.name}</h2>
+                <p>
+                  {report.employee.company_name} · Matrícula{" "}
+                  {report.employee.registration_number || "-"}
+                </p>
+              </div>
+              <div className="report-totals">
+                <span>
+                  CH <b>{minutesToHHMM(totals.expected)}</b>
+                </span>
+                <span>
+                  Normais <b>{minutesToHHMM(totals.normal)}</b>
+                </span>
+                <span>
+                  Extras <b>{minutesToHHMM(totals.extra)}</b>
+                </span>
+                <span>
+                  Atraso <b>{minutesToHHMM(-totals.late)}</b>
+                </span>
+                <span>
+                  Falta <b>{minutesToHHMM(-totals.absence)}</b>
+                </span>
+              </div>
+            </div>
+            <div className="panel">
+              <div className="table-wrap">
+                <DataTable className="report-table">
+                  <thead>
+                    <tr>
+                      <th>DATA</th>
+                      <th>STATUS</th>
+                      <th>PONTOS</th>
+                      <th>Carga prevista</th>
+                      <th>Horas normais</th>
+                      <th>Horas extras</th>
+                      <th>Atrasos</th>
+                      <th>Faltas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.days.map((d: any) => (
+                      <tr key={d.work_date}>
+                        <td>{brDate(d.work_date)}</td>
+                        <td>
+                          {d.status === "NORMAL"
+                            ? ""
+                            : d.status_label || d.status}
+                        </td>
+                        <td>{d.points_text || ""}</td>
+                        <td>
+                          {d.expected_minutes
+                            ? minutesToHHMM(d.expected_minutes)
+                            : ""}
+                        </td>
+                        <td>
+                          {d.normal_minutes
+                            ? minutesToHHMM(d.normal_minutes)
+                            : ""}
+                        </td>
+                        <td>
+                          {d.overtime_minutes
+                            ? minutesToHHMM(d.overtime_minutes)
+                            : ""}
+                        </td>
+                        <td className="negative">
+                          {d.late_minutes ? minutesToHHMM(-d.late_minutes) : ""}
+                        </td>
+                        <td className="negative">
+                          {d.absence_minutes
+                            ? minutesToHHMM(-d.absence_minutes)
+                            : ""}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </DataTable>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
     </>
   );
 }

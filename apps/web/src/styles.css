@@ -1358,3 +1358,21 @@ th {
   object-fit: contain;
   flex-shrink: 0;
 }
+
+.payroll-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.payroll-export .panel { margin-bottom: 18px; }
+.payroll-export h2, .payroll-export h3 { margin-top: 0; }
+.payroll-export p { line-height: 1.6; }
+.payroll-export .form-grid { margin-bottom: 16px; }
+.payroll-guide { padding: 14px; background: #eef5ff; border-radius: 10px; line-height: 1.6; }
+.payroll-guide a { color: #174f92; text-decoration: underline; }
+.payroll-employees { max-height: 380px; overflow: auto; }
+.payroll-export input[type="checkbox"] { width: 20px; height: 20px; accent-color: #1f3b68; }
+.payroll-employees td:last-child { min-width: 170px; }
+.payroll-employees input:not([type="checkbox"]) { width: 100%; max-width: 220px; padding: 10px 12px; border: 1px solid #dce4ee; border-radius: 8px; font: inherit; }
+.payroll-file { overflow: auto; padding: 14px; background: #f3f6fa; white-space: pre; max-height: 320px; }
