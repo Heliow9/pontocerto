@@ -8,6 +8,8 @@ const employees = [
   {
     id: 11,
     company_id: 2,
+    group_id: 4,
+    group_name: "Equipe Centro",
     name: "Ana Oliveira",
     registration_number: "0011",
     work_schedule_id: 1,
@@ -15,6 +17,8 @@ const employees = [
   {
     id: 12,
     company_id: 2,
+    group_id: 4,
+    group_name: "Equipe Centro",
     name: "Bruno Souza",
     registration_number: "0012",
     work_schedule_id: 1,
@@ -228,16 +232,81 @@ test("hides payroll exports from supervisors", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("wizard blocks invalid periods and empty selections before making an export request", async ({ page }) => {
+test("wizard blocks invalid periods and empty selections before making an export request", async ({
+  page,
+}) => {
   await setup(page);
-  await page.getByRole("button", { name: "Exportar para ERP", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Exportar para ERP", exact: true })
+    .click();
   await page.getByLabel("Fim da apuração").fill("2099-12-01");
-  await page.getByRole("button", { name: "Continuar para funcionários" }).click();
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
   await expect(page.getByRole("alert")).toContainText("até ontem");
   await page.getByLabel("Início da apuração").fill("2025-08-01");
   await page.getByLabel("Fim da apuração").fill("2025-08-31");
-  await page.getByRole("button", { name: "Continuar para funcionários" }).click();
-  await page.getByRole("button", { name: "Continuar para códigos da folha" }).click();
-  await expect(page.getByRole("alert")).toContainText("pelo menos um funcionário");
-  await expect(page.getByRole("button", { name: "Preparar exportação" })).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
+  await page
+    .getByRole("button", { name: "Continuar para códigos da folha" })
+    .click();
+  await expect(page.getByRole("alert")).toContainText(
+    "pelo menos um funcionário",
+  );
+  await expect(
+    page.getByRole("button", { name: "Preparar exportação" }),
+  ).toHaveCount(0);
+});
+
+test("exports a complete group even when search hides one member", async ({
+  page,
+}) => {
+  await setup(page);
+  await page
+    .getByRole("button", { name: "Exportar para ERP", exact: true })
+    .click();
+  await page.getByLabel("Início da apuração").fill("2025-08-01");
+  await page.getByLabel("Fim da apuração").fill("2025-08-31");
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
+  await page.getByLabel("Exportar por", { exact: true }).selectOption("group");
+  await page.getByLabel("Grupo para exportação").selectOption("4");
+  await expect(page.getByLabel("Selecionar Ana Oliveira")).toBeChecked();
+  await expect(page.getByLabel("Selecionar Bruno Souza")).toBeDisabled();
+  await page.getByLabel("Buscar funcionário").fill("Ana");
+  await expect(page.getByText("2 de 2 selecionados")).toBeVisible();
+  await page.screenshot({
+    path: "test-results/export-group.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Continuar para códigos da folha" })
+    .click();
+  const generated = page.waitForRequest((r) =>
+    r.url().endsWith("/reports/payroll/generate"),
+  );
+  await page.getByRole("button", { name: "Preparar exportação" }).click();
+  expect((await generated).postDataJSON()).toMatchObject({
+    groupId: 4,
+    employeeIds: [11, 12],
+  });
+});
+test("individual mode replaces the selection with one employee", async ({
+  page,
+}) => {
+  await setup(page);
+  await page
+    .getByRole("button", { name: "Exportar para ERP", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Continuar para funcionários" })
+    .click();
+  await page.getByLabel("Exportar por", { exact: true }).selectOption("single");
+  await page.getByLabel("Selecionar Ana Oliveira").check();
+  await page.getByLabel("Selecionar Bruno Souza").check();
+  await expect(page.getByLabel("Selecionar Ana Oliveira")).not.toBeChecked();
+  await expect(page.getByText("1 de 2 selecionados")).toBeVisible();
 });

@@ -858,3 +858,16 @@ timeEntriesRouter.delete(
     res.json({ ok: true });
   },
 );
+
+// Read-only: the employee sees only their own latest payroll calculations.
+timeEntriesRouter.get("/my/summary", async (req, res, next) => {
+  if (req.auth!.role !== "FUNCIONARIO" || !req.auth!.employeeId) return res.status(403).json({ message: "Usuário funcionário necessário." });
+  const days = Number(req.query.days || 15);
+  if (!Number.isInteger(days) || days < 1 || days > 60) return res.status(400).json({ message: "Consulte de 1 a 60 dias." });
+  try {
+    const [rows] = await pool.query<any[]>(`SELECT work_date,expected_minutes,worked_minutes,time_bank_minutes,processed_at
+      FROM daily_time_calculations WHERE tenant_id=? AND employee_id=?
+      AND work_date >= DATE_SUB(${BRASILIA_DATE_SQL}, INTERVAL ? DAY) AND work_date <= ${BRASILIA_DATE_SQL} ORDER BY work_date DESC`, [req.auth!.tenantId, req.auth!.employeeId, days - 1]);
+    res.setHeader("Cache-Control", "no-store"); res.json(rows);
+  } catch (error) { next(error); }
+});

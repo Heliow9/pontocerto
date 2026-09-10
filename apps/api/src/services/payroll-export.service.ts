@@ -105,6 +105,7 @@ export const exportSchema = z
     start: z.string().refine(validDate),
     end: z.string().refine(validDate),
     competence: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    groupId: z.number().int().positive().optional(),
     employeeIds: z
       .array(z.number().int().positive())
       .min(1)

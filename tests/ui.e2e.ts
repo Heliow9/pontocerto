@@ -42,10 +42,19 @@ async function mock(page: Page, role = "TENANT_ADMIN") {
         user: { ...user, role, employeeId: 1 },
       },
       "/employees": [employee],
+      "/groups": [],
+      "/time-entries/my/summary": [],
       "/reports/payroll/options": {
         companies: [{ id: 1, legal_name: "Empresa de Teste" }],
         employees: [employee],
-        formats: [{ id: "DOMINIO", name: "Domínio Sistemas — TXT", instructions: "Confira os códigos no ERP.", source: null }],
+        formats: [
+          {
+            id: "DOMINIO",
+            name: "Domínio Sistemas — TXT",
+            instructions: "Confira os códigos no ERP.",
+            source: null,
+          },
+        ],
         events: [{ key: "normal", label: "Horas normais" }],
       },
       "/reports/payroll/profiles/1/DOMINIO": { profile: null },
@@ -103,20 +112,33 @@ async function admin(page: Page, hash = "dashboard", role = "TENANT_ADMIN") {
   );
   await page.goto(`/#${hash}`);
 }
-test("busca de funções navega e pode ser fechada sem aviso de alterações", async ({ page }) => {
+test("busca de funções navega e pode ser fechada sem aviso de alterações", async ({
+  page,
+}) => {
   await admin(page);
   await page.getByRole("button", { name: "Encontrar uma função" }).click();
   await page.getByLabel("Buscar uma função").fill("folha");
-  await expect(page.getByRole("dialog").getByRole("link", { name: /^Relatórios/ })).toBeVisible();
+  await expect(
+    page.getByRole("dialog").getByRole("link", { name: /^Relatórios/ }),
+  ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Encontrar uma função" })).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: "Encontrar uma função" }),
+  ).toBeFocused();
   await page.getByRole("button", { name: "Encontrar uma função" }).click();
   await page.getByLabel("Buscar uma função").fill("senha");
-  await page.getByRole("dialog").getByRole("link", { name: /^Alterar senha/ }).click();
-  await expect(page.getByRole("heading", { name: "Alterar senha", exact: true })).toBeVisible();
+  await page
+    .getByRole("dialog")
+    .getByRole("link", { name: /^Alterar senha/ })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Alterar senha", exact: true }),
+  ).toBeVisible();
 });
-test("busca da equipe filtra imediatamente e permite limpar", async ({ page }) => {
+test("busca da equipe filtra imediatamente e permite limpar", async ({
+  page,
+}) => {
   await admin(page, "employees");
   await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
   await page.getByLabel("Buscar por nome, CPF ou matrícula").fill("ninguém");
@@ -124,20 +146,32 @@ test("busca da equipe filtra imediatamente e permite limpar", async ({ page }) =
   await page.getByRole("button", { name: "Limpar filtros" }).click();
   await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
 });
-test("detalhes técnicos do ponto são opcionais e a ajuda acompanha a página", async ({ page }) => {
+test("detalhes técnicos do ponto são opcionais e a ajuda acompanha a página", async ({
+  page,
+}) => {
   await admin(page, "points");
-  await expect(page.getByRole("columnheader", { name: "Biometria / aparelho" })).toHaveCount(0);
+  await expect(
+    page.getByRole("columnheader", { name: "Biometria / aparelho" }),
+  ).toHaveCount(0);
   await page.getByLabel("Detalhes de segurança").check();
-  await expect(page.getByRole("columnheader", { name: "Biometria / aparelho" })).toBeVisible();
+  await expect(
+    page.getByRole("columnheader", { name: "Biometria / aparelho" }),
+  ).toBeVisible();
   expect(await page.locator("td td").count()).toBe(0);
   await page.getByRole("button", { name: "Como usar esta página" }).click();
-  await expect(page.getByRole("dialog")).toContainText("Consulte as entradas e saídas");
+  await expect(page.getByRole("dialog")).toContainText(
+    "Consulte as entradas e saídas",
+  );
 });
-test("atalho da contabilidade abre diretamente o destino correto", async ({ page }) => {
+test("atalho da contabilidade abre diretamente o destino correto", async ({
+  page,
+}) => {
   await admin(page);
   await page.getByRole("link", { name: /Enviar para a contabilidade/ }).click();
   await expect(page).toHaveURL(/#reports\?tab=payroll/);
-  await expect(page.getByRole("button", { name: "Exportar para ERP", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("button", { name: "Exportar para ERP", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 test("menu móvel não ocupa a tela e tabelas viram cartões", async ({
   page,
@@ -433,4 +467,113 @@ test("alteração de senha na PWA pelo perfil", async ({ page }) => {
     .getByRole("button", { name: "Alterar senha", exact: true })
     .click();
   await expect(page.getByLabel("Senha atual", { exact: true })).toHaveValue("");
+});
+
+test("gerencia grupo, vincula integrantes e filtra funcionários", async ({
+  page,
+}) => {
+  await admin(page, "employees");
+  let saved = false;
+  await page.route("**/groups", async (route) => {
+    if (route.request().method() === "POST")
+      return route.fulfill({ json: { id: 4 } });
+    return route.fulfill({
+      json: saved
+        ? [{ id: 4, company_id: 1, name: "Equipe Centro", employee_count: 1 }]
+        : [],
+    });
+  });
+  await page.route("**/groups/4/members", async (route) => {
+    expect(route.request().postDataJSON()).toEqual({ employeeIds: [1] });
+    saved = true;
+    await route.fulfill({ json: { ok: true } });
+  });
+  await page.route("**/employees?*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          ...employee,
+          ...(saved ? { group_id: 4, group_name: "Equipe Centro" } : {}),
+        },
+      ],
+    }),
+  );
+  await page.getByRole("button", { name: "Gerenciar grupos" }).click();
+  await page.getByLabel("Nome do grupo").fill("Equipe Centro");
+  await page.getByRole("dialog").getByRole("checkbox").check();
+  await page.screenshot({
+    path: "test-results/employee-groups.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Salvar grupo e integrantes" })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Grupo salvo" }),
+  ).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Fechar", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByLabel("Grupo", { exact: true }).selectOption("4");
+  await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
+});
+test("PWA mostra próximo registro, ajuda e calendário com apuração", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mock(page, "FUNCIONARIO");
+  await page.route("**/time-entries/my/summary?*", (route) =>
+    route.fulfill({
+      json: [
+        {
+          work_date: date,
+          expected_minutes: 480,
+          worked_minutes: 510,
+          time_bank_minutes: 30,
+          processed_at: `${date} 18:00:00`,
+        },
+      ],
+    }),
+  );
+  await page.goto("http://127.0.0.1:4174");
+  await page.getByLabel("E-mail", { exact: true }).fill("maria@example.test");
+  await page.getByLabel("Senha", { exact: true }).fill("test-password");
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  await expect(
+    page.getByText("Próximo registro: Saída", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Preciso de ajuda para registrar" })
+    .click();
+  await expect(
+    page.getByText("Vamos resolver seu registro", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Fechar ajuda" }).click();
+  await page.getByRole("tab", { name: "Histórico" }).click();
+  await page
+    .getByRole("button", { name: "9/09/2026, 1 marcações", exact: true })
+    .click();
+  await expect(
+    page.getByText("Saldo do dia: 0h 30min", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/pwa-calendar.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Solicitar marcação ausente" })
+    .click();
+  await expect(page.getByLabel("Data e horário solicitados")).toHaveValue(
+    `${date}T08:00`,
+  );
+});
+
+test("PWA concilia tentativa pendente e mostra confirmação do servidor", async ({ page }) => {
+  await mock(page, "FUNCIONARIO");
+  await page.addInitScript(() => { localStorage.setItem("pc_token", "test-token"); localStorage.setItem("pc_pending_1", "pending-test"); });
+  await page.route("**/time-entries/my/requests/pending-test", route => route.fulfill({ json: { ...entry, entry_type: "CLOCK_OUT", registered_at: `${date} 17:04:00` } }));
+  await page.goto("http://127.0.0.1:4174");
+  await page.getByRole("button", { name: "Consultar confirmação pendente" }).click();
+  await expect(page.getByText("Saída confirmada às 17:04", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Consultar confirmação pendente" })).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem("pc_pending_1"))).toBeNull();
 });

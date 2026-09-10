@@ -831,3 +831,13 @@ table td {
     max-width: none;
   }
 }
+
+.group-fields { border: 0; padding: 0; min-width: 0; }
+.group-members { max-height: 340px; overflow-y: auto; display: grid; gap: 8px; margin: 12px 0; }
+.group-member { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #dce5e9; border-radius: 10px; }
+.group-member input { width: 20px; height: 20px; flex-shrink: 0; }
+.group-member small { display: block; color: #526477; margin-top: 4px; }
+
+.group-fields > label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 650; color: #35566a; margin: 16px 0; }
+.group-fields > label input { width: 100%; min-height: 46px; border: 1px solid #d6dfe6; border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 15px; }
+.group-fields h3 { margin: 20px 0 12px; }

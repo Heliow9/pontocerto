@@ -23,6 +23,8 @@ type Employee = {
   company_id: number;
   name: string;
   registration_number: string | null;
+  group_id?: number | null;
+  group_name?: string | null;
   work_schedule_id: number | null;
 };
 type Options = {
@@ -82,6 +84,10 @@ export function PayrollExportPanel({
     [end, setEnd] = useState(range.end);
   const [competence, setCompetence] = useState(range.start.slice(0, 7));
   const [selected, setSelected] = useState<number[]>([]);
+  const [selectionMode, setSelectionMode] = useState<
+    "selected" | "single" | "group"
+  >("selected");
+  const [groupId, setGroupId] = useState("");
   const [search, setSearch] = useState("");
   const [profile, setProfile] = useState<Profile>(emptyProfile);
   const [profileReady, setProfileReady] = useState("");
@@ -148,15 +154,47 @@ export function PayrollExportPanel({
   }, [companyId, format, reload]);
   useEffect(() => {
     setResult(null);
-  }, [companyId, format, start, end, competence, selected, profile]);
+  }, [
+    companyId,
+    format,
+    start,
+    end,
+    competence,
+    selected,
+    profile,
+    selectionMode,
+    groupId,
+  ]);
 
   const employees =
     options?.employees.filter((e) => e.company_id === Number(companyId)) || [];
-  const visible = employees.filter((e) =>
-    `${e.name} ${e.registration_number || ""}`
-      .toLocaleLowerCase("pt-BR")
-      .includes(search.toLocaleLowerCase("pt-BR")),
-  );
+  const visible = employees
+    .filter((e) => selectionMode !== "group" || String(e.group_id) === groupId)
+    .filter((e) =>
+      `${e.name} ${e.registration_number || ""}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(search.toLocaleLowerCase("pt-BR")),
+    );
+  const employeeGroups = [
+    ...new Map(
+      employees
+        .filter((e) => e.group_id)
+        .map((e) => [Number(e.group_id), e.group_name || "Grupo"]),
+    ).entries(),
+  ];
+  useEffect(() => {
+    setGroupId("");
+    setSelected([]);
+    setSearch("");
+  }, [companyId]);
+  useEffect(() => {
+    if (selectionMode === "group")
+      setSelected(
+        employees
+          .filter((e) => String(e.group_id) === groupId)
+          .map((e) => e.id),
+      );
+  }, [selectionMode, groupId, options, companyId]);
   const layout = options?.formats.find((f) => f.id === format);
   const ready = Boolean(companyId && options && profileReady === key);
   function validateStep(index: number): string {
@@ -226,6 +264,11 @@ export function PayrollExportPanel({
     if (!issue) setStep((s) => s + 1);
   }
   function toggle(id: number) {
+    if (selectionMode === "group") return;
+    if (selectionMode === "single") {
+      setSelected([id]);
+      return;
+    }
     setSelected((ids) =>
       ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id],
     );
@@ -285,6 +328,7 @@ export function PayrollExportPanel({
           end,
           competence,
           employeeIds: selected,
+          ...(selectionMode === "group" ? { groupId: Number(groupId) } : {}),
           profile,
         },
         { timeout: 120000 },
@@ -577,6 +621,59 @@ export function PayrollExportPanel({
               </div>
               <div className="panel" hidden={step !== 1}>
                 <h3>2. Quem entra nesta exportação?</h3>
+                <div className="toolbar">
+                  <label>
+                    Exportar por
+                    <select
+                      aria-label="Exportar por"
+                      value={selectionMode}
+                      onChange={(e) => {
+                        setSelectionMode(
+                          e.target.value as typeof selectionMode,
+                        );
+                        setSelected([]);
+                        setSearch("");
+                      }}
+                    >
+                      <option value="selected">
+                        Funcionários selecionados
+                      </option>
+                      <option value="single">Funcionário individual</option>
+                      <option value="group">Grupo completo</option>
+                    </select>
+                  </label>
+                  {selectionMode === "group" && (
+                    <label>
+                      Grupo para exportação
+                      <select
+                        aria-label="Grupo para exportação"
+                        value={groupId}
+                        onChange={(e) => setGroupId(e.target.value)}
+                      >
+                        <option value="">Selecione um grupo</option>
+                        {employeeGroups.map(([id, name]) => (
+                          <option key={id} value={id}>
+                            {name} (
+                            {
+                              employees.filter((e) => Number(e.group_id) === id)
+                                .length
+                            }{" "}
+                            ativos)
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+                {selectionMode === "group" && (
+                  <p role="status">
+                    Todos os funcionários ativos do grupo entram no arquivo,
+                    inclusive os que não aparecem na busca. Para escolher apenas
+                    parte da equipe, use Funcionários selecionados.{" "}
+                    {employeeGroups.length === 0 &&
+                      "Cadastre um grupo em Funcionários > Gerenciar grupos."}
+                  </p>
+                )}
                 <p>
                   Confira o código de cada funcionário no ERP. Por padrão,
                   usamos a matrícula do cadastro. Nesta etapa estão disponíveis
@@ -595,7 +692,7 @@ export function PayrollExportPanel({
                   <button
                     type="button"
                     className="secondary"
-                    disabled={!visible.length}
+                    disabled={!visible.length || selectionMode !== "selected"}
                     onClick={() =>
                       setSelected((ids) => [
                         ...new Set([...ids, ...visible.map((e) => e.id)]),
@@ -607,7 +704,7 @@ export function PayrollExportPanel({
                   <button
                     type="button"
                     className="secondary"
-                    disabled={!selected.length}
+                    disabled={!selected.length || selectionMode === "group"}
                     onClick={() => setSelected([])}
                   >
                     Limpar seleção
@@ -630,7 +727,13 @@ export function PayrollExportPanel({
                         <tr key={e.id}>
                           <td data-label="Selecionar">
                             <input
-                              type="checkbox"
+                              type={
+                                selectionMode === "single"
+                                  ? "radio"
+                                  : "checkbox"
+                              }
+                              name="payroll-member"
+                              disabled={selectionMode === "group"}
                               aria-label={`Selecionar ${e.name}`}
                               checked={selected.includes(e.id)}
                               onChange={() => toggle(e.id)}
@@ -638,6 +741,10 @@ export function PayrollExportPanel({
                           </td>
                           <td data-label="Funcionário">
                             {e.name}
+                            <small className="muted">
+                              {" "}
+                              · {e.group_name || "Sem grupo"}
+                            </small>
                             {!e.work_schedule_id && (
                               <small className="negative">
                                 {" "}

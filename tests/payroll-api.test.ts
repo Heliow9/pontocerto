@@ -200,3 +200,29 @@ describe("payroll export API", () => {
     expect(response.status).toBe(400);
   });
 });
+
+it("rejects a stale complete-group selection before processing", async () => {
+  mocks.query
+    .mockResolvedValueOnce([[{ id: 2 }]])
+    .mockResolvedValueOnce([[{ id: 4 }]])
+    .mockResolvedValueOnce([[{ id: 11 }], []]);
+  const response = await send({ ...body, groupId: 4 });
+  expect(response.status).toBe(409);
+  expect(mocks.process).not.toHaveBeenCalled();
+});
+it("rejects a group outside the selected company", async () => {
+  mocks.query.mockResolvedValueOnce([[{ id: 2 }]]).mockResolvedValueOnce([[]]);
+  expect((await send({ ...body, groupId: 99 })).status).toBe(404);
+  expect(mocks.query.mock.calls[1][1]).toEqual([99, 7, 2]);
+});
+it("exports and audits the complete current group", async () => {
+  mocks.query
+    .mockResolvedValueOnce([[{ id: 2 }]])
+    .mockResolvedValueOnce([[{ id: 4 }]])
+    .mockResolvedValueOnce([[{ id: 11 }, { id: 12 }]]);
+  expect((await send({ ...body, groupId: 4 })).status).toBe(200);
+  expect(mocks.audit.mock.calls[0][5]).toMatchObject({
+    groupId: 4,
+    employeeIds: [11, 12],
+  });
+});

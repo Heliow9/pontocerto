@@ -7,6 +7,12 @@ export function PwaNotice({ busy }: { busy: boolean }) {
     [dismissed, setDismissed] = useState(false);
   useEffect(() => {
     if (Platform.OS !== "web") return;
+    try {
+      setDismissed(
+        Number(localStorage.getItem("pc_install_dismissed_until") || 0) >
+          Date.now(),
+      );
+    } catch {}
     setStandalone(
       window.matchMedia("(display-mode: standalone)").matches ||
         Boolean((navigator as any).standalone),
@@ -93,7 +99,15 @@ export function PwaNotice({ busy }: { busy: boolean }) {
       <Pressable
         accessibilityRole="button"
         style={s.button}
-        onPress={() => setDismissed(true)}
+        onPress={() => {
+          setDismissed(true);
+          try {
+            localStorage.setItem(
+              "pc_install_dismissed_until",
+              String(Date.now() + 7 * 86400000),
+            );
+          } catch {}
+        }}
       >
         <Text style={s.link}>Agora não</Text>
       </Pressable>

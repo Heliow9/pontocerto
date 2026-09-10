@@ -75,7 +75,7 @@ payrollExportsRouter.get(
     );
     const [employees] = await pool.query<any[]>(
       `SELECT e.id, e.company_id, e.name, e.registration_number, e.active,
-      e.work_schedule_id, e.admission_date FROM employees e
+      e.group_id, (SELECT g.name FROM employee_groups g WHERE g.id=e.group_id AND g.tenant_id=e.tenant_id AND g.company_id=e.company_id) AS group_name, e.work_schedule_id, e.admission_date FROM employees e
       JOIN companies c ON c.id=e.company_id AND c.tenant_id=e.tenant_id
       WHERE e.tenant_id=? AND e.active=1${scope} ORDER BY e.name`,
       params,
@@ -174,7 +174,7 @@ payrollExportsRouter.post(
         message:
           "Informe empresa, formato, competência, funcionários únicos e um período válido de até 62 dias.",
       });
-    const { companyId, format, start, end, competence, employeeIds, profile } =
+    const { companyId, format, start, end, competence, employeeIds, profile, groupId } =
       parsed.data;
     const company = await companyFor(req, companyId);
     if (!company)
@@ -185,6 +185,13 @@ payrollExportsRouter.post(
         message:
           "Exporte apenas dias encerrados, até ontem. O dia atual pode ter uma jornada em andamento.",
       });
+    if (groupId) {
+      const [groups] = await pool.query<any[]>("SELECT id FROM employee_groups WHERE id=? AND tenant_id=? AND company_id=?", [groupId, req.auth!.tenantId, companyId]);
+      if (!groups.length) return res.status(404).json({ message: "Grupo não encontrado nesta empresa." });
+      const [members] = await pool.query<any[]>("SELECT id FROM employees WHERE tenant_id=? AND company_id=? AND group_id=? AND active=1", [req.auth!.tenantId, companyId, groupId]);
+      if (members.length !== employeeIds.length || members.some(e => !employeeIds.includes(Number(e.id))))
+        return res.status(409).json({ message: "Os integrantes do grupo mudaram. Recarregue a exportação e confira a seleção do grupo completo." });
+    }
     const placeholders = employeeIds.map(() => "?").join(",");
     const [employees] = await pool.query<any[]>(
       `SELECT id, name, registration_number, admission_date, work_schedule_id, active
@@ -263,6 +270,7 @@ payrollExportsRouter.post(
         end,
         competence,
         employeeIds,
+        groupId: groupId || null,
         events: profile.events,
         rows: rows.length,
         sha256,

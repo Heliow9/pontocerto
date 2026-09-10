@@ -18,6 +18,7 @@ export const pageGuides: Record<string, { purpose: string; steps: string[] }> =
         "Organize quem trabalha na empresa e como cada pessoa pode registrar o ponto.",
       steps: [
         "Cadastre os dados do funcionário e escolha a empresa.",
+        "Use Gerenciar grupos para organizar equipes e selecionar integrantes. Cada funcionário pode pertencer a um grupo da empresa.",
         "Vincule a jornada e os locais onde ele pode registrar o ponto.",
         "Configure o acesso ao aplicativo. Os filtros ajudam a encontrar cadastros com pendências.",
       ],
@@ -35,7 +36,7 @@ export const pageGuides: Record<string, { purpose: string; steps: string[] }> =
         "Confira as horas trabalhadas ou prepare um arquivo para a contabilidade.",
       steps: [
         "Espelho mensal: escolha funcionário e período, visualize o resultado e baixe o PDF.",
-        "Exportar para ERP: siga as etapas de período, funcionários, códigos da folha e conferência.",
+        "Exportar para ERP: escolha grupo completo, funcionário individual ou funcionários selecionados; confira período, códigos e prévia.",
         "Rubrica é o código que identifica um evento na folha, como horas extras. A contabilidade fornece esses códigos.",
       ],
     },

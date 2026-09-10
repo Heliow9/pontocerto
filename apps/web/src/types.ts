@@ -41,6 +41,8 @@ export type Employee = {
   ctps?: string | null;
   position_name?: string | null;
   department_name?: string | null;
+  group_id?: number | null;
+  group_name?: string | null;
   work_schedule_id?: number | null;
   schedule_name?: string | null;
   biometric_exempt?: number | null;

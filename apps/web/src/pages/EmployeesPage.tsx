@@ -1,3 +1,4 @@
+import { GroupsManager, type EmployeeGroup } from "../components/GroupsManager";
 import { useAccess } from "../components/Access";
 import { LoadState, useLoadState } from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
@@ -19,6 +20,7 @@ const blank = {
   ctps: "",
   positionName: "",
   departmentName: "",
+  groupId: null as number | null,
   workScheduleId: null as number | null,
   workLocationIds: [] as number[],
   biometricExempt: false,
@@ -34,6 +36,9 @@ export function EmployeesPage({
 }) {
   const { canManage, canAdjust, role } = useAccess();
   const editable = canManage;
+  const [groups, setGroups] = useState<EmployeeGroup[]>([]);
+  const [manageGroups, setManageGroups] = useState(false);
+  const [groupFilter, setGroupFilter] = useState("");
   const [items, setItems] = useState<Employee[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -59,11 +64,13 @@ export function EmployeesPage({
       api.get("/companies"),
       api.get("/schedules"),
       api.get("/locations"),
-    ]).then(([a, b, c, d]) => {
+      api.get("/groups"),
+    ]).then(([a, b, c, d, g]) => {
       setItems(a.data);
       setCompanies(b.data);
       setSchedules(c.data);
       setLocations(d.data);
+      setGroups(g.data);
     });
 
   const load = () => loadState.run(fetchData);
@@ -122,6 +129,7 @@ export function EmployeesPage({
       ctps: item.ctps || "",
       positionName: item.position_name || "",
       departmentName: item.department_name || "",
+      groupId: item.group_id || null,
       workScheduleId: item.work_schedule_id || null,
       workLocationIds: assigned,
       biometricExempt: Boolean(item.biometric_exempt),
@@ -230,6 +238,10 @@ export function EmployeesPage({
         .replace(/[\u0300-\u036f]/g, "")
         .toLowerCase()
         .includes(normalizedSearch) &&
+      (!groupFilter ||
+        (groupFilter === "none"
+          ? !i.group_id
+          : String(i.group_id) === groupFilter)) &&
       (!companyFilter || String(i.company_id) === companyFilter) &&
       (statusFilter === "all" ||
         Boolean(i.active) === (statusFilter === "active")) &&
@@ -248,12 +260,26 @@ export function EmployeesPage({
         subtitle="Cadastros, jornadas, locais permitidos e acesso ao aplicativo"
         action={
           editable && (
-            <button className="primary" onClick={() => open()}>
-              + Novo funcionário
-            </button>
+            <div className="toolbar">
+              <button onClick={() => setManageGroups(true)}>
+                Gerenciar grupos
+              </button>
+              <button className="primary" onClick={() => open()}>
+                + Novo funcionário
+              </button>
+            </div>
           )
         }
       />
+      {manageGroups && (
+        <GroupsManager
+          groups={groups}
+          employees={items}
+          companies={companies}
+          close={() => setManageGroups(false)}
+          reload={fetchData}
+        />
+      )}
       <div className="employee-overview" aria-label="Resumo da equipe">
         <button
           aria-pressed={statusFilter === "active" && !needs}
@@ -306,7 +332,10 @@ export function EmployeesPage({
           Empresa
           <select
             value={companyFilter}
-            onChange={(e) => setCompanyFilter(e.target.value)}
+            onChange={(e) => {
+              setCompanyFilter(e.target.value);
+              setGroupFilter("");
+            }}
           >
             <option value="">Todas</option>
             {companies.map((c) => (
@@ -314,6 +343,26 @@ export function EmployeesPage({
                 {c.trade_name || c.legal_name}
               </option>
             ))}
+          </select>
+        </label>
+        <label>
+          Grupo
+          <select
+            aria-label="Grupo"
+            value={groupFilter}
+            onChange={(e) => setGroupFilter(e.target.value)}
+          >
+            <option value="">Todos os grupos</option>
+            <option value="none">Sem grupo</option>
+            {groups
+              .filter(
+                (g) => !companyFilter || String(g.company_id) === companyFilter,
+              )
+              .map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
           </select>
         </label>
         <label>
@@ -347,12 +396,17 @@ export function EmployeesPage({
               atualiza enquanto você digita
             </p>
           </div>
-          {(search || companyFilter || needs || statusFilter !== "active") && (
+          {(search ||
+            companyFilter ||
+            groupFilter ||
+            needs ||
+            statusFilter !== "active") && (
             <button
               className="ghost"
               onClick={() => {
                 setSearch("");
                 setCompanyFilter("");
+                setGroupFilter("");
                 setNeeds("");
                 setStatusFilter("active");
               }}
@@ -373,6 +427,7 @@ export function EmployeesPage({
                   <th>Nome</th>
                   <th>Empresa</th>
                   <th>Matrícula</th>
+                  <th>Grupo</th>
                   <th>Cargo</th>
                   <th>Jornada / Local</th>
                   <th>Admissão</th>
@@ -393,6 +448,7 @@ export function EmployeesPage({
                     </td>
                     <td>{i.company_name}</td>
                     <td>{i.registration_number || "-"}</td>
+                    <td>{i.group_name || "Sem grupo"}</td>
                     <td>{i.position_name || "-"}</td>
                     <td>
                       {i.schedule_name || (
@@ -554,6 +610,7 @@ export function EmployeesPage({
                     setForm({
                       ...form,
                       companyId: Number(e.target.value),
+                      groupId: null,
                       workScheduleId: null,
                       workLocationIds: [],
                     })
@@ -609,6 +666,30 @@ export function EmployeesPage({
                 />
               </label>
 
+              <label>
+                Grupo
+                <select
+                  value={form.groupId || ""}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      groupId: e.target.value ? Number(e.target.value) : null,
+                    })
+                  }
+                >
+                  <option value="">Sem grupo</option>
+                  {groups
+                    .filter(
+                      (g) => Number(g.company_id) === Number(form.companyId),
+                    )
+                    .map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                </select>
+                <small>Cadastre novas equipes em Gerenciar grupos.</small>
+              </label>
               <div className="section-label span-2">Locais autorizados</div>
               <div className="location-checks span-2">
                 {filteredLocations.length === 0 ? (

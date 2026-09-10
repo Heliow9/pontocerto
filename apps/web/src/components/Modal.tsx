@@ -5,17 +5,20 @@ export function Modal({
   onClose,
   wide = false,
   protectChanges = true,
+  isDirty,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
   protectChanges?: boolean;
+  isDirty?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null),
     close = useRef(onClose),
     dirty = useRef(false);
   close.current = onClose;
+  if (isDirty !== undefined) dirty.current = isDirty;
   const [confirmClose, setConfirmClose] = useState(false);
   const titleId = useId();
   function requestClose() {

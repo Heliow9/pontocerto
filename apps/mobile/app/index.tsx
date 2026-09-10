@@ -1,3 +1,8 @@
+import {
+  HistoryCalendar,
+  DayTotals,
+  type DaySummary,
+} from "../src/JourneyHistory";
 import { ChangePassword } from "../src/ChangePassword";
 import { DateTimeField } from "../src/DateTimeField";
 import {
@@ -25,6 +30,7 @@ import {
   Text,
   TextInput,
   View,
+  Vibration,
 } from "react-native";
 import * as Location from "expo-location";
 import * as Device from "expo-device";
@@ -81,6 +87,8 @@ type ScheduleContext = {
   scheduleText?: string | null;
   nextType?: string | null;
   complete: boolean;
+  expectedSequence?: string[];
+  workDate?: string;
   entriesCount: number;
   policy?: {
     enforceScheduleWindow: boolean;
@@ -238,6 +246,12 @@ export default function App() {
   const Alert = useFeedback();
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string }>();
+  const [selectedDay, setSelectedDay] = useState("");
+  const [summaries, setSummaries] = useState<DaySummary[]>([]);
+  const [summaryError, setSummaryError] = useState("");
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [punchError, setPunchError] = useState("");
+  const homeScroll = useRef<ScrollView>(null);
   const [now, setNow] = useState(new Date()),
     [syncing, setSyncing] = useState(false),
     [syncError, setSyncError] = useState(""),
@@ -256,6 +270,8 @@ export default function App() {
       entryType: string;
       reason: string;
     } | null>(null);
+  const historyRange = useRef(historyDays);
+  historyRange.current = historyDays;
   const epoch = useRef(0),
     refreshing = useRef(false),
     punchLock = useRef(false),
@@ -320,6 +336,46 @@ export default function App() {
   useEffect(() => {
     if (token && user && !punchLock.current) void refresh();
   }, [dayKey]);
+  useEffect(() => {
+    if (!user?.employee_id) return;
+    let canceled = false;
+    AsyncStorage.getItem(`pc_setup_done_${user.employee_id}`)
+      .then((value) => {
+        if (!canceled) setSetup(value !== "1");
+      })
+      .catch(() => {});
+    return () => {
+      canceled = true;
+    };
+  }, [user?.employee_id]);
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const resume = () => {
+      if (
+        document.visibilityState === "visible" &&
+        token &&
+        user &&
+        !punchLock.current &&
+        !cameraOpen
+      ) {
+        setNow(new Date());
+        void refresh();
+      }
+    };
+    const offline = () => {
+      setSyncError(
+        "Sem conexão. Você pode consultar os registros salvos; conecte-se para confirmar um novo ponto.",
+      );
+    };
+    document.addEventListener("visibilitychange", resume);
+    window.addEventListener("online", resume);
+    window.addEventListener("offline", offline);
+    return () => {
+      document.removeEventListener("visibilitychange", resume);
+      window.removeEventListener("online", resume);
+      window.removeEventListener("offline", offline);
+    };
+  }, [token, user, cameraOpen, historyDays]);
   const nextType = scheduleContext?.nextType || "OTHER";
   const contextReady = Boolean(
     scheduleContext && deviceStatus && lastSync && !syncError && !syncing,
@@ -426,6 +482,11 @@ export default function App() {
     setUser(null);
     setEntries([]);
     setHistory([]);
+    setSummaries([]);
+    setSummaryError("");
+    setSelectedDay("");
+    setPunchError("");
+    setHelpOpen(false);
     setAdjustments([]);
     setReceipt(null);
     setDeviceStatus(null);
@@ -441,6 +502,7 @@ export default function App() {
   async function refresh() {
     if (!user?.employee_id || refreshing.current) return null;
     const currentEpoch = epoch.current;
+    const queryDays = historyRange.current;
     refreshing.current = true;
     setSyncing(true);
     setSyncError("");
@@ -451,12 +513,13 @@ export default function App() {
         await Promise.all([
           api.get("/time-entries/my/today"),
           api.get("/time-entries/my/history", {
-            params: { days: historyDays },
+            params: { days: queryDays },
           }),
           api.get("/devices/my/status", { params: { deviceUid: uid || "" } }),
           api.get("/time-entries/my/context"),
         ]);
-      if (currentEpoch !== epoch.current) return null;
+      if (currentEpoch !== epoch.current || queryDays !== historyRange.current)
+        return null;
       const at = new Date().toISOString();
       setEntries(todayResult.data);
       setHistory(historyResult.data);
@@ -474,15 +537,41 @@ export default function App() {
         }),
       );
       void api
+        .get("/time-entries/my/summary", { params: { days: queryDays } })
+        .then((r) => {
+          if (
+            currentEpoch === epoch.current &&
+            queryDays === historyRange.current
+          ) {
+            setSummaries(r.data);
+            setSummaryError("");
+          }
+        })
+        .catch(() => {
+          if (
+            currentEpoch === epoch.current &&
+            queryDays === historyRange.current
+          )
+            setSummaryError(
+              "Não foi possível consultar a apuração. Atualize para tentar novamente.",
+            );
+        });
+      void api
         .get("/adjustments")
         .then((r) => {
-          if (currentEpoch === epoch.current) {
+          if (
+            currentEpoch === epoch.current &&
+            queryDays === historyRange.current
+          ) {
             setAdjustments(r.data);
             setAdjustmentsError("");
           }
         })
         .catch(() => {
-          if (currentEpoch === epoch.current)
+          if (
+            currentEpoch === epoch.current &&
+            queryDays === historyRange.current
+          )
             setAdjustmentsError(
               "Não foi possível atualizar suas solicitações. Tente atualizar novamente.",
             );
@@ -492,7 +581,10 @@ export default function App() {
         schedule: contextResult.data as ScheduleContext,
       };
     } catch (e: any) {
-      if (currentEpoch === epoch.current) {
+      if (
+        currentEpoch === epoch.current &&
+        queryDays === historyRange.current
+      ) {
         if (e.response?.status === 401) {
           await logout();
           Alert.alert("Sessão expirada", "Entre novamente para continuar.");
@@ -505,6 +597,8 @@ export default function App() {
     } finally {
       refreshing.current = false;
       setSyncing(false);
+      if (currentEpoch === epoch.current && queryDays !== historyRange.current)
+        void refresh();
     }
   }
   async function loadToday() {
@@ -532,6 +626,9 @@ export default function App() {
   async function acceptReceipt(
     data: Entry & { selfie?: { captured?: boolean } },
   ) {
+    setPunchError("");
+    if (Platform.OS === "android") Vibration.vibrate(80);
+    homeScroll.current?.scrollTo({ y: 0, animated: true });
     setReceipt({
       ...data,
       has_selfie: data.selfie?.captured ? 1 : data.has_selfie,
@@ -789,6 +886,7 @@ export default function App() {
   async function openSelfieCamera() {
     if (!user?.employee_id || punchLock.current) return;
     punchLock.current = true;
+    setPunchError("");
     setLoading(true);
     try {
       if (requestKey.current && (await reconcile())) return;
@@ -864,6 +962,11 @@ export default function App() {
       setSelfieUri(null);
       setCameraOpen(true);
     } catch (e: any) {
+      setPunchError(
+        e.response?.data?.message ||
+          e.message ||
+          "Não foi possível preparar a marcação.",
+      );
       Alert.alert(
         "Preparar registro",
         e.response?.data?.message ||
@@ -900,6 +1003,7 @@ export default function App() {
   async function confirmSelfieAndClock() {
     if (!selfieUri || !user?.employee_id || punchLock.current) return;
     punchLock.current = true;
+    setPunchError("");
     setLoading(true);
     setClockStep("Obtendo localização...");
     try {
@@ -1140,12 +1244,12 @@ export default function App() {
     Platform.OS !== "web" ? (
       <RefreshControl refreshing={syncing} onRefresh={() => void refresh()} />
     ) : undefined;
-  function newAdjustment(entry?: Entry) {
+  function newAdjustment(entry?: Entry, date = selectedDay || dayKey) {
     setAdjustment({
       timeEntryId: entry?.id || null,
       requestedTime: entry
         ? entry.registered_at.slice(0, 16).replace(" ", "T")
-        : `${dayKey}T08:00`,
+        : `${date}T08:00`,
       entryType: entry?.entry_type || "CLOCK_IN",
       reason: "",
     });
@@ -1193,10 +1297,105 @@ export default function App() {
       )}
       {tab === "home" && (
         <ScrollView
+          ref={homeScroll}
           refreshControl={refreshControl}
           contentContainerStyle={s.content}
         >
-          <PwaNotice busy={loading || cameraOpen} />
+          <PwaNotice
+            busy={
+              loading ||
+              cameraOpen ||
+              Boolean(requestKey.current) ||
+              Boolean(adjustment)
+            }
+          />
+          {receipt && (
+            <View style={s.receipt} accessibilityLiveRegion="polite">
+              <Text accessibilityRole="header" style={s.cardTitle}>
+                {typeLabel[receipt.entry_type]} confirmada às{" "}
+                {time(receipt.registered_at)}
+              </Text>
+              <Text style={s.body}>
+                Recebemos seu ponto em {brDate(receipt.registered_at)}. Registro
+                #{receipt.id}.
+              </Text>
+              <Action
+                secondary
+                label="Conferir comprovante"
+                onPress={() => setDetail(receipt)}
+              />
+            </View>
+          )}
+          <Action
+            secondary
+            icon="help-circle-outline"
+            label="Preciso de ajuda para registrar"
+            onPress={() => setHelpOpen(!helpOpen)}
+          />
+          {(helpOpen || punchError) && (
+            <View style={s.card}>
+              <Text accessibilityRole="header" style={s.cardTitle}>
+                Vamos resolver seu registro
+              </Text>
+              {!!punchError && (
+                <Text accessibilityRole="alert" style={s.errorText}>
+                  {punchError}
+                </Text>
+              )}
+              <Text style={s.body}>
+                1. Permita a câmera e a localização para este aplicativo. A
+                selfie identifica seu registro; o GPS verifica o local
+                autorizado.
+              </Text>
+              <Text style={s.body}>
+                2. Se o GPS não responder, ative a localização e procure uma
+                área com melhor sinal. Depois, verifique o local novamente.
+              </Text>
+              <Text style={s.body}>
+                3. Se a jornada ou o aparelho estiverem bloqueados, consulte o
+                RH. Para um ponto esquecido, solicite um ajuste no histórico.
+              </Text>
+              <Action
+                secondary
+                label="Verificar meu local"
+                disabled={loading || !contextReady}
+                onPress={diagnoseGps}
+              />
+              {Platform.OS === "web" ? (
+                <Text style={s.caption}>
+                  Permissão negada? Abra as configurações deste site pelo ícone
+                  ao lado do endereço do navegador e permita câmera e
+                  localização. Volte aqui e toque em Atualizar dados.
+                </Text>
+              ) : (
+                <Action
+                  secondary
+                  label="Abrir permissões do aplicativo"
+                  onPress={() =>
+                    Linking.openSettings().catch(() =>
+                      Alert.alert(
+                        "Permissões",
+                        "Abra as configurações do aparelho e localize Ponto Certo.",
+                      ),
+                    )
+                  }
+                />
+              )}
+              <Action
+                secondary
+                label="Solicitar ajuste ao RH"
+                onPress={() => newAdjustment()}
+              />
+              <Action
+                secondary
+                label="Fechar ajuda"
+                onPress={() => {
+                  setHelpOpen(false);
+                  setPunchError("");
+                }}
+              />
+            </View>
+          )}
           {(mustBind || setup || unsupported) && (
             <View style={s.setupCard}>
               <Text accessibilityRole="header" style={s.cardTitle}>
@@ -1205,7 +1404,7 @@ export default function App() {
               <Text style={s.body}>
                 {unsupported
                   ? "Sua conta exige biometria no aplicativo instalado. Consulte o RH para obter o acesso ao Ponto Certo Android."
-                  : "São três cuidados para registrar: permitir câmera e GPS, vincular o aparelho quando exigido e confirmar sua jornada."}
+                  : "Antes de registrar: permitir câmera e GPS, vincular o aparelho quando exigido e confirmar sua jornada."}
               </Text>
               <Info
                 label="1 · Câmera"
@@ -1216,7 +1415,15 @@ export default function App() {
                 }
               />
               <Info
-                label="2 · Aparelho"
+                label="2 · Localização"
+                value={
+                  geoPreview
+                    ? "Consultada. Será validada ao registrar."
+                    : "Verifique o GPS para confirmar o local"
+                }
+              />
+              <Info
+                label="3 · Aparelho"
                 value={
                   deviceStatus?.currentDevice
                     ? "Vinculado"
@@ -1226,7 +1433,7 @@ export default function App() {
                 }
               />
               <Info
-                label="3 · Jornada"
+                label="4 · Jornada"
                 value={
                   scheduleContext?.scheduleText || "Atualize para consultar"
                 }
@@ -1263,7 +1470,13 @@ export default function App() {
                     <Action
                       secondary
                       label="Configuração concluída"
-                      onPress={() => setSetup(false)}
+                      onPress={() => {
+                        setSetup(false);
+                        void AsyncStorage.setItem(
+                          `pc_setup_done_${user.employee_id}`,
+                          "1",
+                        ).catch(() => {});
+                      }}
                     />
                   )}
                 </>
@@ -1309,6 +1522,11 @@ export default function App() {
             {scheduleContext?.decision === "BLOCKED" && (
               <Text style={s.errorText}>{scheduleContext.message}</Text>
             )}
+            {contextReady && !scheduleContext?.complete && (
+              <Text accessibilityRole="header" style={s.cardTitle}>
+                Próximo registro: {typeLabel[nextType] || "Ponto"}
+              </Text>
+            )}
             <Action
               icon="finger-print-outline"
               label={
@@ -1352,28 +1570,53 @@ export default function App() {
               />
             )}
           </View>
-          {receipt && (
-            <View style={s.receipt} accessibilityLiveRegion="polite">
-              <Ionicons name="checkmark-circle" size={32} color="#176847" />
-              <Text style={s.cardTitle}>Ponto confirmado</Text>
-              <Text style={s.body}>
-                {typeLabel[receipt.entry_type]} ·{" "}
-                {brDate(receipt.registered_at)} às {time(receipt.registered_at)}
-              </Text>
-              <Text style={s.caption}>
-                Registro #{receipt.id} · horário confirmado pelo servidor
-              </Text>
-              <Action
-                secondary
-                label="Ver detalhes"
-                onPress={() => setDetail(receipt)}
-              />
-            </View>
-          )}
           <View style={s.card}>
             <Text accessibilityRole="header" style={s.cardTitle}>
               Marcações de hoje
             </Text>
+            {!!scheduleContext?.expectedSequence?.length && (
+              <View style={{ gap: 10, marginVertical: 12 }}>
+                <Text style={s.caption}>
+                  Etapas da jornada
+                  {scheduleContext.workDate &&
+                  scheduleContext.workDate !== dayKey
+                    ? ` de ${brDate(scheduleContext.workDate)}`
+                    : ""}
+                </Text>
+                {scheduleContext.expectedSequence.map((type, index) => (
+                  <View
+                    key={`${type}-${index}`}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <Ionicons
+                      name={
+                        index < scheduleContext.entriesCount
+                          ? "checkmark-circle"
+                          : "ellipse-outline"
+                      }
+                      size={22}
+                      color={
+                        index < scheduleContext.entriesCount
+                          ? "#176847"
+                          : "#526477"
+                      }
+                    />
+                    <Text style={s.body}>
+                      {typeLabel[type]} ·{" "}
+                      {index < scheduleContext.entriesCount
+                        ? "Registrado"
+                        : index === scheduleContext.entriesCount
+                          ? "Próximo"
+                          : "A seguir"}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
             {entries.length === 0 ? (
               <Text style={s.body}>
                 {syncError
@@ -1435,7 +1678,11 @@ export default function App() {
                 accessibilityRole="button"
                 accessibilityState={{ selected: days === historyDays }}
                 key={days}
-                onPress={() => setHistoryDays(days)}
+                onPress={() => {
+                  setHistoryDays(days);
+                  setSelectedDay("");
+                  setSummaries([]);
+                }}
                 style={[
                   s.segmentButton,
                   days === historyDays && s.segmentActive,
@@ -1447,25 +1694,72 @@ export default function App() {
               </Pressable>
             ))}
           </View>
+          <HistoryCalendar
+            key={historyDays}
+            today={dayKey}
+            days={historyDays}
+            counts={Object.fromEntries(
+              Object.entries(groups).map(([day, entries]) => [
+                day,
+                entries.length,
+              ]),
+            )}
+            selected={selectedDay}
+            onSelect={setSelectedDay}
+          />
+          {lastSync && (
+            <Text style={s.caption}>
+              Registros consultados em{" "}
+              {new Date(lastSync).toLocaleString("pt-BR")}
+              {syncError ? " · Dados salvos no aparelho" : ""}
+            </Text>
+          )}
+          {!!summaryError && (
+            <Text accessibilityRole="alert" style={s.errorText}>
+              {summaryError}
+            </Text>
+          )}
           <Action
             secondary
             label="Solicitar marcação ausente"
             onPress={() => newAdjustment()}
           />
-          {Object.entries(groups).map(([day, items]) => (
-            <View key={day} style={s.card}>
-              <Text style={s.cardTitle}>
-                {brDate(day)} · {items.length} marcações
-              </Text>
-              {items.map((entry) => (
-                <EntryRow
-                  key={entry.id}
-                  entry={entry}
-                  onPress={() => setDetail(entry)}
+          {Object.entries(groups)
+            .filter(([day]) => !selectedDay || selectedDay === day)
+            .sort(([a], [b]) => b.localeCompare(a))
+            .map(([day, items]) => (
+              <View key={day} style={s.card}>
+                <Text style={s.cardTitle}>
+                  {brDate(day)} · {items.length} marcações
+                </Text>
+                <DayTotals
+                  summary={summaries.find(
+                    (d) => d.work_date.slice(0, 10) === day,
+                  )}
                 />
-              ))}
+                {items.map((entry) => (
+                  <EntryRow
+                    key={entry.id}
+                    entry={entry}
+                    onPress={() => setDetail(entry)}
+                  />
+                ))}
+              </View>
+            ))}
+          {selectedDay && !groups[selectedDay] && (
+            <View style={s.card}>
+              <Text style={s.cardTitle}>{brDate(selectedDay)}</Text>
+              <Text style={s.body}>
+                Nenhuma marcação encontrada neste dia. Se esqueceu de registrar,
+                use Solicitar marcação ausente.
+              </Text>
+              <DayTotals
+                summary={summaries.find(
+                  (d) => d.work_date.slice(0, 10) === selectedDay,
+                )}
+              />
             </View>
-          ))}
+          )}
           {history.length === 0 && (
             <Text style={s.body}>
               {syncError

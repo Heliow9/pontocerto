@@ -43,3 +43,20 @@ Todas as rotas abaixo usam a autenticação de Relatórios e restringem papéis 
 - `POST /reports/payroll/generate`: recebe empresa, formato, início/fim, competência, IDs selecionados e perfil; retorna conteúdo, nome de arquivo, conferência e avisos. Registra auditoria com hash SHA-256 do conteúdo e não importa dados no ERP.
 
 Arquivos usam UTF-8 sem BOM e linhas CRLF. Os dois TXT contêm apenas caracteres ASCII. O CSV genérico escapa campos e neutraliza fórmulas nos textos. Nenhuma migração modifica configurações existentes da empresa.
+
+
+## Grupos de funcionários
+
+Em **Funcionários → Gerenciar grupos**, cadastre um grupo por empresa (ex.: obra, contrato, unidade ou equipe), selecione os integrantes e salve. O nome utilizado é **Grupo**; o campo Setor continua independente. Os funcionários existentes começam sem grupo e mantêm seus cadastros e pontos.
+
+Cada funcionário pode pertencer a um grupo por vez. Selecioná-lo em outro grupo transfere o vínculo; funcionários inativos podem manter seu grupo. Também é possível alterar o grupo no cadastro individual. Para excluir um grupo, primeiro remova e salve todos os vínculos, inclusive os inativos.
+
+Na etapa **Funcionários** da exportação, escolha:
+
+- **Grupo completo**: inclui todos os integrantes ativos atuais, independentemente do filtro de busca. O servidor compara os IDs com os integrantes do grupo; se houver mudança desde o carregamento, retorna 409 e exige recarregar/conferir novamente.
+- **Funcionário individual**: seleciona exatamente uma pessoa.
+- **Funcionários selecionados**: permite marcar várias pessoas, inclusive de grupos diferentes da mesma empresa. Selecionar exibidos adiciona somente os resultados visíveis; a contagem informa a seleção total.
+
+Grupos não alteram as posições ou colunas dos arquivos de ERP. A auditoria registra o grupo (quando utilizado), os IDs selecionados e o hash do arquivo. Permanecem os limites de 500 funcionários por exportação e 62 dias. Um integrante ativo sem jornada impede exportar o grupo completo até regularizar seu cadastro. Grupos sem integrantes ativos não aparecem na exportação.
+
+A migração **010_employee_groups.sql** cria o cadastro e o vínculo opcional com integridade por tenant/empresa. Execute as migrações antes de reiniciar a nova API. `GET/POST /groups`, `PUT/DELETE /groups/:id` e `PUT /groups/:id/members` atendem o gerenciamento; alterações exigem SUPER_ADMIN, TENANT_ADMIN ou RH. A substituição de integrantes ocorre em transação. O gerenciamento em lote aceita até 500 vínculos por solicitação.

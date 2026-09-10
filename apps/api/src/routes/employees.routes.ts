@@ -12,7 +12,7 @@ employeesRouter.use(authMiddleware, requireRole("SUPER_ADMIN", "TENANT_ADMIN", "
 
 const listSql = `SELECT e.id, e.company_id, e.name, e.cpf, e.pis, e.registration_number,
                         e.admission_date, e.ctps, e.position_name, e.department_name,
-                        e.work_schedule_id, e.biometric_exempt, e.active,
+                        e.group_id, g.name AS group_name, e.work_schedule_id, e.biometric_exempt, e.active,
                         c.legal_name AS company_name,
                         s.name AS schedule_name,
                         u.id AS user_id, u.email AS access_email,
@@ -24,6 +24,7 @@ const listSql = `SELECT e.id, e.company_id, e.name, e.cpf, e.pis, e.registration
                           WHERE el.employee_id=e.id AND el.tenant_id=e.tenant_id AND wl.active=1) AS location_names
                    FROM employees e
                    JOIN companies c ON c.id=e.company_id AND c.tenant_id=e.tenant_id
+                   LEFT JOIN employee_groups g ON g.id=e.group_id AND g.tenant_id=e.tenant_id AND g.company_id=e.company_id
                    LEFT JOIN work_schedules s ON s.id=e.work_schedule_id AND s.tenant_id=e.tenant_id
                    LEFT JOIN users u ON u.employee_id=e.id AND u.tenant_id=e.tenant_id
                   WHERE e.tenant_id=?`;
@@ -56,6 +57,7 @@ employeesRouter.get("/:id", async (req, res) => {
 
 const employeeSchema = z.object({
   companyId: z.number().int().positive(),
+  groupId: z.number().int().positive().optional().nullable(),
   name: z.string().min(3),
   cpf: z.string().optional().nullable(),
   pis: z.string().optional().nullable(),
@@ -72,7 +74,7 @@ const employeeSchema = z.object({
   accessPassword: z.string().min(6).optional().nullable().or(z.literal(""))
 });
 
-async function validateRelations(tenantId: number, companyId: number, scheduleId?: number | null) {
+async function validateRelations(tenantId: number, companyId: number, scheduleId?: number | null, groupId?: number | null) {
   const [companies] = await pool.query<any[]>(
     "SELECT id FROM companies WHERE id=? AND tenant_id=? AND active=1 LIMIT 1",
     [companyId, tenantId]
@@ -84,6 +86,10 @@ async function validateRelations(tenantId: number, companyId: number, scheduleId
       [scheduleId, tenantId, companyId]
     );
     if (!schedules[0]) return "Jornada não pertence à empresa selecionada.";
+  }
+  if (groupId) {
+    const [groups] = await pool.query<any[]>("SELECT id FROM employee_groups WHERE id=? AND tenant_id=? AND company_id=?", [groupId, tenantId, companyId]);
+    if (!groups.length) return "Grupo não pertence à empresa selecionada.";
   }
   return null;
 }
@@ -123,7 +129,7 @@ employeesRouter.post(
     const parsed = employeeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Dados inválidos.", issues: parsed.error.flatten() });
     const e = parsed.data;
-    const relationError = await validateRelations(req.auth!.tenantId, e.companyId, e.workScheduleId);
+    const relationError = await validateRelations(req.auth!.tenantId, e.companyId, e.workScheduleId, e.groupId);
     if (relationError) return res.status(400).json({ message: relationError });
     const locationError = await validateLocations(req.auth!.tenantId, e.companyId, e.workLocationIds);
     if (locationError) return res.status(400).json({ message: locationError });
@@ -136,12 +142,12 @@ employeesRouter.post(
       const [result] = await conn.query<any>(
         `INSERT INTO employees
          (tenant_id, company_id, name, cpf, pis, registration_number, admission_date, ctps,
-          position_name, department_name, work_schedule_id, biometric_exempt, active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
+          position_name, department_name, group_id, work_schedule_id, biometric_exempt, active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
         [
           req.auth!.tenantId, e.companyId, e.name, e.cpf || null, e.pis || null,
           e.registrationNumber || null, e.admissionDate || null, e.ctps || null,
-          e.positionName || null, e.departmentName || null, e.workScheduleId || null, e.biometricExempt ? 1 : 0, e.active ? 1 : 0
+          e.positionName || null, e.departmentName || null, e.groupId || null, e.workScheduleId || null, e.biometricExempt ? 1 : 0, e.active ? 1 : 0
         ]
       );
       const employeeId = Number(result.insertId);
@@ -183,7 +189,7 @@ employeesRouter.put(
     const parsed = employeeSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "Dados inválidos." });
     const e = parsed.data;
-    const relationError = await validateRelations(req.auth!.tenantId, e.companyId, e.workScheduleId);
+    const relationError = await validateRelations(req.auth!.tenantId, e.companyId, e.workScheduleId, e.groupId);
     if (relationError) return res.status(400).json({ message: relationError });
     const locationError = await validateLocations(req.auth!.tenantId, e.companyId, e.workLocationIds);
     if (locationError) return res.status(400).json({ message: locationError });
@@ -193,17 +199,19 @@ employeesRouter.put(
       [id, req.auth!.tenantId]
     );
     if (!beforeRows[0]) return res.status(404).json({ message: "Funcionário não encontrado." });
+    // Older clients do not send groupId; preserve its existing association within the same company.
+    if (e.groupId === undefined) e.groupId = Number(beforeRows[0].company_id) === e.companyId ? beforeRows[0].group_id : null;
 
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
       await conn.query(
         `UPDATE employees SET company_id=?, name=?, cpf=?, pis=?, registration_number=?, admission_date=?,
-          ctps=?, position_name=?, department_name=?, work_schedule_id=?, biometric_exempt=?, active=?, updated_at=${BRASILIA_NOW_SQL}
+          ctps=?, position_name=?, department_name=?, group_id=?, work_schedule_id=?, biometric_exempt=?, active=?, updated_at=${BRASILIA_NOW_SQL}
           WHERE id=? AND tenant_id=?`,
         [
           e.companyId, e.name, e.cpf || null, e.pis || null, e.registrationNumber || null,
-          e.admissionDate || null, e.ctps || null, e.positionName || null, e.departmentName || null,
+          e.admissionDate || null, e.ctps || null, e.positionName || null, e.departmentName || null, e.groupId || null,
           e.workScheduleId || null, e.biometricExempt ? 1 : 0, e.active ? 1 : 0, id, req.auth!.tenantId
         ]
       );
