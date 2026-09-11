@@ -17,3 +17,5 @@ test-results/
 dist-android-check/
 
 .dependency-backup/
+
+**/google-services.json

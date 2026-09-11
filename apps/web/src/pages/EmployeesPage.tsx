@@ -1,3 +1,4 @@
+import { EmployeeImport } from "../components/EmployeeImport";
 import { GroupsManager, type EmployeeGroup } from "../components/GroupsManager";
 import { useAccess } from "../components/Access";
 import { LoadState, useLoadState } from "../components/LoadState";
@@ -37,6 +38,7 @@ export function EmployeesPage({
   const { canManage, canAdjust, role } = useAccess();
   const editable = canManage;
   const [groups, setGroups] = useState<EmployeeGroup[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
   const [manageGroups, setManageGroups] = useState(false);
   const [groupFilter, setGroupFilter] = useState("");
   const [items, setItems] = useState<Employee[]>([]);
@@ -261,6 +263,9 @@ export function EmployeesPage({
         action={
           editable && (
             <div className="toolbar">
+              <button className="secondary" onClick={() => setImportOpen(true)}>
+                Importar planilha
+              </button>
               <button onClick={() => setManageGroups(true)}>
                 Gerenciar grupos
               </button>
@@ -271,6 +276,13 @@ export function EmployeesPage({
           )
         }
       />
+      {importOpen && (
+        <EmployeeImport
+          companies={companies}
+          close={() => setImportOpen(false)}
+          reload={fetchData}
+        />
+      )}
       {manageGroups && (
         <GroupsManager
           groups={groups}

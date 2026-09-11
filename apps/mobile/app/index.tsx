@@ -1,3 +1,8 @@
+import { ReminderSettings } from "../src/ReminderSettings";
+import {
+  disableReminders,
+  listenToReminders,
+} from "../src/notification-client";
 import {
   HistoryCalendar,
   DayTotals,
@@ -389,6 +394,21 @@ export default function App() {
   const unsupported =
     Platform.OS === "web" &&
     Boolean(deviceStatus?.policy.requireDeviceBiometric);
+  useEffect(() => {
+    if (!user?.employee_id) return;
+    let canceled = false,
+      cleanup = () => {};
+    listenToReminders(() => navigate("home"))
+      .then((stop) => {
+        if (canceled) stop();
+        else cleanup = stop;
+      })
+      .catch(() => {});
+    return () => {
+      canceled = true;
+      cleanup();
+    };
+  }, [user?.employee_id]);
   function navigate(value: Tab) {
     setTab(value);
     router.setParams({ tab: value });
@@ -444,6 +464,7 @@ export default function App() {
       const { data } = await api.post("/auth/login", {
         email: email.trim(),
         password,
+        persistent: true,
       });
       if (!data.user.employeeId) {
         Alert.alert(
@@ -477,6 +498,10 @@ export default function App() {
   }
   async function logout() {
     epoch.current++;
+    await Promise.allSettled([
+      disableReminders(5000),
+      api.post("/auth/logout", undefined, { timeout: 5000 }),
+    ]);
     await AsyncStorage.multiRemove(["pc_token", "pc_snapshot"]);
     setToken(null);
     setUser(null);
@@ -1818,6 +1843,7 @@ export default function App() {
             <Info label="Cargo" value={user.position_name} />
             <Info label="E-mail" value={user.email} />
           </View>
+          <ReminderSettings />
           <ChangePassword />
           <View style={s.card}>
             <Text style={s.cardTitle}>Aparelho e permissões</Text>

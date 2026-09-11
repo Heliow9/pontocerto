@@ -43,6 +43,13 @@ async function mock(page: Page, role = "TENANT_ADMIN") {
       },
       "/employees": [employee],
       "/groups": [],
+      "/notifications/settings": {
+        webReady: true,
+        workerEnabled: true,
+        publicKey: "test-public",
+        subscriptions: [],
+      },
+      "/notifications/upcoming": { events: [] },
       "/time-entries/my/summary": [],
       "/reports/payroll/options": {
         companies: [{ id: 1, legal_name: "Empresa de Teste" }],
@@ -295,6 +302,55 @@ test("dashboard desktop e estados de erro", async ({ page }) => {
   await expect(page.getByRole("alert")).toContainText("indisponível");
   await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
 });
+test("PWA mantém a sessão ao reabrir e encerra somente ao sair", async ({
+  page,
+  context,
+}) => {
+  await mock(page, "FUNCIONARIO");
+  await page.goto("http://127.0.0.1:4174");
+  await page.getByLabel("E-mail", { exact: true }).fill("maria@example.test");
+  await page.getByLabel("Senha", { exact: true }).fill("test-password");
+  const loginRequest = page.waitForRequest("**/auth/login");
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  expect((await loginRequest).postDataJSON().persistent).toBe(true);
+  await expect(page.getByText("Olá, Maria", { exact: true })).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("pc_snapshot")))
+    .not.toBeNull();
+  await page.close();
+  const reopened = await context.newPage();
+  await mock(reopened, "FUNCIONARIO");
+  await reopened.route("**/auth/me", (route) =>
+    route.fulfill({ status: 503, json: { message: "Indisponível" } }),
+  );
+  await reopened.goto("http://127.0.0.1:4174");
+  await expect(reopened.getByText("Olá, Maria", { exact: true })).toBeVisible();
+  expect(await reopened.evaluate(() => localStorage.getItem("pc_token"))).toBe(
+    "test-token",
+  );
+  await reopened.unroute("**/auth/me");
+  await reopened.reload();
+  await expect(reopened.getByText("Olá, Maria", { exact: true })).toBeVisible();
+  await reopened.getByRole("tab", { name: "Perfil", exact: true }).click();
+  const logoutRequest = reopened.waitForRequest("**/auth/logout");
+  await reopened
+    .getByRole("button", { name: "Sair da conta", exact: true })
+    .click();
+  expect((await logoutRequest).headers().authorization).toBe(
+    "Bearer test-token",
+  );
+  await expect(
+    reopened.getByRole("button", { name: "Entrar", exact: true }),
+  ).toBeVisible();
+  await reopened.reload();
+  await expect(
+    reopened.getByRole("button", { name: "Entrar", exact: true }),
+  ).toBeVisible();
+  expect(
+    await reopened.evaluate(() => localStorage.getItem("pc_token")),
+  ).toBeNull();
+});
+
 test("PWA login, histórico, feedback e falha de consulta", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mock(page, "FUNCIONARIO");
@@ -511,7 +567,10 @@ test("gerencia grupo, vincula integrantes e filtra funcionários", async ({
   await expect(
     page.getByRole("status").filter({ hasText: "Grupo salvo" }),
   ).toBeVisible();
-  await page.getByRole("dialog").getByRole("button", { name: "Fechar", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Fechar", exact: true })
+    .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByLabel("Grupo", { exact: true }).selectOption("4");
   await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
@@ -567,13 +626,239 @@ test("PWA mostra próximo registro, ajuda e calendário com apuração", async (
   );
 });
 
-test("PWA concilia tentativa pendente e mostra confirmação do servidor", async ({ page }) => {
+test("PWA concilia tentativa pendente e mostra confirmação do servidor", async ({
+  page,
+}) => {
   await mock(page, "FUNCIONARIO");
-  await page.addInitScript(() => { localStorage.setItem("pc_token", "test-token"); localStorage.setItem("pc_pending_1", "pending-test"); });
-  await page.route("**/time-entries/my/requests/pending-test", route => route.fulfill({ json: { ...entry, entry_type: "CLOCK_OUT", registered_at: `${date} 17:04:00` } }));
+  await page.addInitScript(() => {
+    localStorage.setItem("pc_token", "test-token");
+    localStorage.setItem("pc_pending_1", "pending-test");
+  });
+  await page.route("**/time-entries/my/requests/pending-test", (route) =>
+    route.fulfill({
+      json: {
+        ...entry,
+        entry_type: "CLOCK_OUT",
+        registered_at: `${date} 17:04:00`,
+      },
+    }),
+  );
   await page.goto("http://127.0.0.1:4174");
-  await page.getByRole("button", { name: "Consultar confirmação pendente" }).click();
-  await expect(page.getByText("Saída confirmada às 17:04", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Consultar confirmação pendente" })).toHaveCount(0);
-  expect(await page.evaluate(() => localStorage.getItem("pc_pending_1"))).toBeNull();
+  await page
+    .getByRole("button", { name: "Consultar confirmação pendente" })
+    .click();
+  await expect(
+    page.getByText("Saída confirmada às 17:04", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Consultar confirmação pendente" }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem("pc_pending_1")),
+  ).toBeNull();
+});
+
+test("importação exige prévia válida e confirma a planilha escolhida", async ({
+  page,
+}) => {
+  await admin(page, "employees");
+  let imported = 0;
+  await page.route("**/employees/import/preview", (route) =>
+    route.fulfill({
+      json: {
+        rows: [{ line: 2, nome: "Bruno Souza", matricula: "002" }],
+        preview: [
+          {
+            line: 2,
+            nome: "Bruno Souza",
+            matricula: "002",
+            grupo: "Equipe Centro",
+            jornada: "Comercial",
+            local: "Sede",
+            errors: [],
+            warnings: [],
+          },
+        ],
+        canImport: true,
+        confirmation: "signed-preview",
+      },
+    }),
+  );
+  await page.route("**/employees/import/confirm", (route) => {
+    imported++;
+    expect(route.request().postDataJSON().confirmation).toBe("signed-preview");
+    return route.fulfill({ json: { imported: 1 } });
+  });
+  await page
+    .getByRole("button", { name: "Importar planilha", exact: true })
+    .click();
+  await page.getByLabel("Arquivo Excel ou CSV").setInputFiles({
+    name: "equipe.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("nome;matricula\nBruno Souza;002"),
+  });
+  await expect(
+    page.getByRole("button", { name: "Importar 1 funcionário" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Conferir planilha" }).click();
+  await expect(
+    page.getByText("Pronto para importar", { exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "test-results/import-preview.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Importar 1 funcionário" }).click();
+  await expect(
+    page.getByText("1 funcionário importado com sucesso.", { exact: true }),
+  ).toBeVisible();
+  expect(imported).toBe(1);
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Fechar", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+test("erros da planilha impedem importar e mostram a linha", async ({
+  page,
+}) => {
+  await admin(page, "employees");
+  await page.route("**/employees/import/preview", (route) =>
+    route.fulfill({
+      json: {
+        rows: [],
+        preview: [
+          {
+            line: 2,
+            nome: "Ana Silva",
+            matricula: "001",
+            errors: ["Matrícula já cadastrada."],
+            warnings: [],
+          },
+        ],
+        canImport: false,
+        confirmation: null,
+      },
+    }),
+  );
+  await page
+    .getByRole("button", { name: "Importar planilha", exact: true })
+    .click();
+  await page.getByLabel("Arquivo Excel ou CSV").setInputFiles({
+    name: "equipe.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("nome;matricula\nAna Silva;001"),
+  });
+  await page.getByRole("button", { name: "Conferir planilha" }).click();
+  await expect(
+    page.getByText("Matrícula já cadastrada.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Importar 1 funcionário" }),
+  ).toBeDisabled();
+});
+test("PWA permite ativar e desativar lembretes no aparelho", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mock(page, "FUNCIONARIO");
+  await page.addInitScript(() => {
+    localStorage.setItem("pc_token", "test-token");
+    localStorage.setItem("pc_push_device", "push-test-device-1");
+    let permission: NotificationPermission = "default",
+      subscription: any = null;
+    Object.defineProperty(Notification, "permission", {
+      get: () => permission,
+    });
+    Notification.requestPermission = async () => {
+      permission = "granted";
+      return permission;
+    };
+    const fake = {
+      pushManager: {
+        getSubscription: async () => subscription,
+        subscribe: async () => {
+          subscription = {
+            toJSON: () => ({
+              endpoint: "https://fcm.googleapis.com/test",
+              keys: { p256dh: "a".repeat(87), auth: "b".repeat(22) },
+            }),
+            unsubscribe: async () => {
+              subscription = null;
+              return true;
+            },
+          };
+          return subscription;
+        },
+      },
+      addEventListener: () => {},
+    };
+    navigator.serviceWorker.register = async () => fake as any;
+    navigator.serviceWorker.getRegistration = async () => fake as any;
+    Object.defineProperty(navigator.serviceWorker, "ready", {
+      value: Promise.resolve(fake),
+    });
+  });
+  let enabled = false;
+  await page.route("**/notifications/settings", (route) =>
+    route.fulfill({
+      json: {
+        publicKey: "dGVzdA",
+        webReady: true,
+        workerEnabled: true,
+        subscriptions: enabled
+          ? [{ device_key: "push-test-device-1", enabled: 1 }]
+          : [],
+      },
+    }),
+  );
+  await page.route("**/notifications/subscription", (route) => {
+    expect(route.request().postDataJSON().kind).toBe("WEB");
+    enabled = true;
+    return route.fulfill({ json: { enabled: true } });
+  });
+  await page.route(
+    "**/notifications/subscription/push-test-device-1",
+    (route) => {
+      enabled = false;
+      return route.fulfill({ json: { enabled: false } });
+    },
+  );
+  await page.route("**/notifications/upcoming", (route) =>
+    route.fulfill({
+      json: {
+        events: [
+          {
+            key: "entrada",
+            label: "entrada",
+            time: "07:00",
+            remindAt: Date.parse("2026-09-11T09:55:00Z"),
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("http://127.0.0.1:4174");
+  await page.getByRole("tab", { name: "Perfil" }).click();
+  await page
+    .getByRole("button", { name: "Ativar lembretes", exact: true })
+    .click();
+  await expect(
+    page.getByText("Ativados neste aparelho", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/aviso de entrada às 07:00/)).toBeVisible();
+  await page
+    .getByText("Lembretes de ponto", { exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: "test-results/pwa-reminders.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Desativar lembretes", exact: true })
+    .click();
+  await expect(
+    page.getByText("Desativados neste aparelho", { exact: true }),
+  ).toBeVisible();
+  expect(enabled).toBe(false);
 });

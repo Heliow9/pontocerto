@@ -4,6 +4,11 @@ import { z } from "zod";
 const emptyToUndefined = (value: unknown) => value === "" ? undefined : value;
 
 const schema = z.object({
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default("https://pontoocerto.duckdns.org"),
+  EXPO_ACCESS_TOKEN: z.string().optional(),
+  REMINDER_WORKER_ENABLED: z.enum(["0","1"]).default("1"),
   PORT: z.coerce.number().default(3333),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   MYSQL_HOST: z.string().min(1),

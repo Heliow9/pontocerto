@@ -1,3 +1,4 @@
+import { employeeImportRouter } from "./employee-import.routes.js";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
@@ -9,6 +10,8 @@ import { writeAudit } from "../utils/audit.js";
 
 export const employeesRouter = Router();
 employeesRouter.use(authMiddleware, requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH", "GESTOR", "SUPERVISOR"));
+
+employeesRouter.use("/import", employeeImportRouter);
 
 const listSql = `SELECT e.id, e.company_id, e.name, e.cpf, e.pis, e.registration_number,
                         e.admission_date, e.ctps, e.position_name, e.department_name,

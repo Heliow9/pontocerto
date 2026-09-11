@@ -17,7 +17,7 @@ export const pageGuides: Record<string, { purpose: string; steps: string[] }> =
       purpose:
         "Organize quem trabalha na empresa e como cada pessoa pode registrar o ponto.",
       steps: [
-        "Cadastre os dados do funcionário e escolha a empresa.",
+        "Cadastre os dados do funcionário e escolha a empresa. Para cadastrar vários de uma vez, use Importar planilha e confira a prévia.",
         "Use Gerenciar grupos para organizar equipes e selecionar integrantes. Cada funcionário pode pertencer a um grupo da empresa.",
         "Vincule a jornada e os locais onde ele pode registrar o ponto.",
         "Configure o acesso ao aplicativo. Os filtros ajudam a encontrar cadastros com pendências.",

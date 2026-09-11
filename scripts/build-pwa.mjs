@@ -39,6 +39,20 @@ const files = list.map(
 fs.writeFileSync(
   path.join(directory, "sw.js"),
   `const CACHE=${JSON.stringify(cache)};const ASSETS=${JSON.stringify(files)};
+self.addEventListener('push',event=>{
+  let data;try{data=event.data?.json()}catch{return}
+  if(!data||!data.title||Number(data.expiresAt)<=Date.now())return;
+  event.waitUntil(self.registration.showNotification(String(data.title),{body:String(data.body||''),icon:'/icons/icon-192.png',tag:String(data.tag||'ponto-reminder'),data:{url:'/?tab=home'},requireInteraction:false}));
+});
+self.addEventListener('notificationclick',event=>{
+  event.notification.close();
+  event.waitUntil(self.clients.matchAll({type:'window',includeUncontrolled:true}).then(async clients=>{
+    const target=new URL('/?tab=home',self.location.origin).href;
+    const client=clients.find(c=>new URL(c.url).origin===self.location.origin);
+    if(client){await client.navigate(target);return client.focus()}
+    return self.clients.openWindow(target);
+  }));
+});
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS))));
 self.addEventListener('message',event=>{if(event.data?.type==='SKIP_WAITING')self.skipWaiting()});
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('ponto-certo-')&&key!==CACHE).map(key=>caches.delete(key)))),self.clients.claim()])));

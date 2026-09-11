@@ -140,3 +140,5 @@ A partir daí a batida segura é validada integralmente pela API.
 - Admin SaaS: `saas@pontocerto.local` / `Admin@123`
 
 Troque as senhas em produção.
+
+Veja [Importação de funcionários e lembretes de ponto](docs/IMPORTACAO_E_LEMBRETES.md) para o novo fluxo e a configuração de notificações no servidor/PWA/Android.
