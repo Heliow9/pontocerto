@@ -90,3 +90,29 @@ export async function collectOvertimeAlerts() {
     }
   }
 }
+
+let alertWorkerRunning = false;
+
+export async function runOvertimeAlertTick() {
+  if (alertWorkerRunning) return;
+  alertWorkerRunning = true;
+  try {
+    await collectOvertimeAlerts();
+  } finally {
+    alertWorkerRunning = false;
+  }
+}
+
+export function startOvertimeAlertWorker() {
+  const run = () =>
+    void runOvertimeAlertTick().catch((error) =>
+      console.warn(
+        "Falha ao apurar alertas de horas extras:",
+        error instanceof Error ? error.message : error,
+      ),
+    );
+  const timer = setInterval(run, 60000);
+  timer.unref();
+  run();
+  return timer;
+}

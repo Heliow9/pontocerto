@@ -26,3 +26,10 @@
 - A captura offline continua exigindo câmera, prévia e confirmação/refazer antes de salvar.
 - No painel da empresa, `Conectar WhatsApp` só aparece quando a sessão está realmente desconectada/encerrada.
 - Quando conectado, o painel mostra somente `Desconectar WhatsApp`; estados de conexão/QR/reconexão não oferecem um segundo pareamento.
+
+## 2026-09-12 — v3 alerta de horas extras / WhatsApp
+- Desacoplada a apuração dos alertas de horas extras do worker de conexão do WhatsApp.
+- A apuração passa a iniciar junto com a API e roda imediatamente + a cada 60 segundos.
+- Falha/indisponibilidade do Baileys não impede mais a criação de `overtime_alerts`.
+- O worker do WhatsApp fica responsável somente por sessão e envio das mensagens já enfileiradas.
+- Adicionado log explícito quando a apuração de horas extras falhar, facilitando diagnóstico no PM2.

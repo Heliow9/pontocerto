@@ -11,7 +11,6 @@ import QRCode from "qrcode";
 import { createHash } from "node:crypto";
 import { pool } from "../db/pool.js";
 import { encryptSession, decryptSession } from "./whatsapp-crypto.js";
-import { collectOvertimeAlerts } from "./overtime.service.js";
 
 type Connection = {
   socket?: ReturnType<typeof makeWASocket>;
@@ -25,8 +24,7 @@ type Connection = {
 const connections = new Map<string, Connection>();
 const key = () => process.env.WHATSAPP_ENCRYPTION_KEY || "";
 let leader: any = null,
-  busy = false,
-  lastCollection = 0;
+  busy = false;
 export const whatsappReady = () =>
   /^[a-f0-9]{64}$/i.test(key()) && Boolean(leader);
 export function whatsappStatus(tenant: number, company: number) {
@@ -268,10 +266,6 @@ export async function runWhatsAppTick() {
           c.next = Date.now() + 60000;
         }
       });
-    if (Date.now() - lastCollection >= 60000) {
-      await collectOvertimeAlerts();
-      lastCollection = Date.now();
-    }
     for (const company of companies) {
       const c = connections.get(`${company.tenant_id}:${company.company_id}`);
       if (c?.status !== "CONNECTED" || !c.socket) continue;
