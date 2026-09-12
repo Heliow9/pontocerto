@@ -10,6 +10,7 @@ const m = vi.hoisted(() => ({
   remove: vi.fn(),
   device: vi.fn(),
   existing: null as any,
+  conflict: null as any,
 }));
 vi.mock("../apps/api/src/db/pool.js", () => ({
   pool: {
@@ -65,6 +66,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   m.rollback.mockResolvedValue(undefined);
   m.existing = null;
+  m.conflict = null;
   m.query.mockResolvedValue([
     [{ id: 11, company_id: 2, remote_enabled: 1, offline_enabled: 1 }],
   ]);
@@ -78,6 +80,8 @@ beforeEach(() => {
     if (sql.includes("GET_LOCK")) return [[{ acquired: 1 }]];
     if (sql.includes("SELECT r.payload_hash"))
       return [m.existing ? [m.existing] : []];
+    if (sql.includes("entry_type=?") && sql.includes("scheduled_work_date"))
+      return [m.conflict ? [m.conflict] : []];
     if (sql.includes("INSERT INTO time_entries")) return [{ insertId: 99 }];
     if (sql.includes("INSERT INTO remote_punches"))
       m.existing = {
@@ -172,4 +176,29 @@ it("desfaz a operação e remove a foto quando a transação falha", async () =>
   ).toBe(500);
   expect(m.rollback).toHaveBeenCalled();
   expect(m.remove).toHaveBeenCalledWith("fixture.jpg");
+});
+
+it("rejeita segunda marcação do mesmo tipo na mesma data lógica de trabalho", async () => {
+  m.conflict = { id: 44, entry_type: "CLOCK_IN" };
+  const response = await request(app).post("/remote-punch").send(payload());
+  expect(response.status).toBe(409);
+  expect(response.body.message).toMatch(/Entrada.*já foi registrada/i);
+  expect(m.save).not.toHaveBeenCalled();
+  expect(
+    m.conn.mock.calls.filter(([sql]) =>
+      sql.includes("INSERT INTO time_entries"),
+    ),
+  ).toHaveLength(0);
+});
+
+it("permite outro tipo de marcação na mesma data lógica", async () => {
+  m.conflict = null;
+  const response = await request(app)
+    .post("/remote-punch")
+    .send({
+      ...payload(),
+      type: "BREAK_OUT",
+      requestKey: "remote-break-12345678",
+    });
+  expect(response.status).toBe(201);
 });

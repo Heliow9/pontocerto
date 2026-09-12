@@ -14,6 +14,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImageManipulator from "expo-image-manipulator";
 import * as SecureStore from "expo-secure-store";
 import * as Crypto from "expo-crypto";
+import * as Network from "expo-network";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
 import { useFeedback } from "./feedback";
@@ -42,6 +43,11 @@ export function RemoteClock({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [cameraOpen, setCameraOpen] = useState(false),
+    [online, setOnline] = useState(
+      Platform.OS === "web"
+        ? typeof navigator === "undefined" || navigator.onLine
+        : true,
+    ),
     [photo, setPhoto] = useState<{
       uri: string;
       base64: string;
@@ -59,6 +65,25 @@ export function RemoteClock({
     });
   const policyKey = `pc_remote_policy_${employeeId}`;
   const capturedOnline = useRef(false);
+
+  async function refreshConnectivity() {
+    if (Platform.OS === "web") {
+      const connected = typeof navigator === "undefined" || navigator.onLine;
+      if (alive.current) setOnline(connected);
+      return connected;
+    }
+    try {
+      const state = await Network.getNetworkStateAsync();
+      const connected =
+        state.isConnected !== false && state.isInternetReachable !== false;
+      if (alive.current) setOnline(connected);
+      return connected;
+    } catch {
+      // Unknown state must not expose the offline flow as if connectivity were certainly absent.
+      if (alive.current) setOnline(true);
+      return true;
+    }
+  }
   async function refreshPolicy() {
     try {
       const { data } = await api.get("/remote-punch/policy", { timeout: 4000 });
@@ -154,7 +179,7 @@ export function RemoteClock({
           }
           onSynced();
         } catch (e: any) {
-          const rejected = [400, 403, 422].includes(e.response?.status);
+          const rejected = [400, 403, 409, 422].includes(e.response?.status);
           const error =
             e.response?.data?.message ||
             "Envio não confirmado. A tentativa será consultada novamente na próxima sincronização.";
@@ -241,13 +266,39 @@ export function RemoteClock({
       if (s === "active" && !lock.current)
         void refreshPolicy().then(() => sync());
     });
-    const online = () => void refreshPolicy().then(() => sync());
-    if (Platform.OS === "web") window.addEventListener("online", online);
+    const becameOnline = () => {
+      if (alive.current) setOnline(true);
+      void refreshPolicy().then(() => sync());
+    };
+    const becameOffline = () => {
+      if (alive.current) setOnline(false);
+    };
+    let networkSubscription: { remove: () => void } | null = null;
+    if (Platform.OS === "web") {
+      window.addEventListener("online", becameOnline);
+      window.addEventListener("offline", becameOffline);
+      void refreshConnectivity();
+    } else {
+      void refreshConnectivity();
+      networkSubscription = Network.addNetworkStateListener(
+        (state: Awaited<ReturnType<typeof Network.getNetworkStateAsync>>) => {
+          const connected =
+            state.isConnected !== false && state.isInternetReachable !== false;
+          if (alive.current) setOnline(connected);
+          if (connected && !lock.current)
+            void refreshPolicy().then(() => sync());
+        },
+      );
+    }
     return () => {
       alive.current = false;
       clearInterval(timer);
       app.remove();
-      if (Platform.OS === "web") window.removeEventListener("online", online);
+      networkSubscription?.remove();
+      if (Platform.OS === "web") {
+        window.removeEventListener("online", becameOnline);
+        window.removeEventListener("offline", becameOffline);
+      }
     };
   }, [employeeId]);
   async function open() {
@@ -256,9 +307,10 @@ export function RemoteClock({
     setBusy(true);
     setMessage("");
     try {
-      const connected = await refreshPolicy(),
+      const hasInternet = await refreshConnectivity();
+      const connected = hasInternet ? await refreshPolicy() : false,
         p = latest.current;
-      capturedOnline.current = connected;
+      capturedOnline.current = connected && hasInternet;
       if (!p?.enabled)
         throw new Error("A empresa não habilitou o ponto remoto.");
       if (
@@ -368,17 +420,27 @@ export function RemoteClock({
   return (
     <View style={s.card}>
       <Text style={s.title}>Ponto de qualquer lugar</Text>
-      <Text>
-        Com selfie, sem exigir localização.{" "}
-        {policy?.offlineEnabled
-          ? "Você pode salvar sem internet e enviar depois."
-          : "Esta empresa exige conexão para esta modalidade."}
-      </Text>
+      <Text>Com selfie, sem exigir localização.</Text>
+      {!online && policy?.offlineEnabled && (
+        <Text style={s.offlineNotice}>
+          Sem internet: o modo offline está disponível. A marcação ficará salva
+          neste aparelho até a conexão voltar.
+        </Text>
+      )}
+      {!online && !policy?.offlineEnabled && (
+        <Text style={s.error}>
+          Sem internet. Esta empresa não autoriza marcação offline.
+        </Text>
+      )}
       <Text>
         O horário do aparelho ficará identificado no registro. Confira data e
         hora antes de marcar.
       </Text>
-      {button("Registrar ponto remoto", () => void open())}
+      {online
+        ? button("Registrar ponto remoto", () => void open())
+        : policy?.offlineEnabled
+          ? button("Registrar ponto offline", () => void open())
+          : null}
       {!!queue.length && (
         <>
           <Text style={s.title}>
@@ -418,11 +480,19 @@ export function RemoteClock({
         animationType="slide"
       >
         <ScrollView contentContainerStyle={s.modal}>
-          <Text style={s.title}>Registrar ponto remoto</Text>
+          <Text style={s.title}>
+            {online ? "Registrar ponto remoto" : "Registrar ponto offline"}
+          </Text>
           <Text>
             Escolha a marcação. Entradas e retornos iniciam períodos; saídas os
             encerram.
           </Text>
+          {!online && (
+            <Text style={s.offlineNotice}>
+              Tire a selfie e confira a prévia. A marcação offline só será salva
+              depois que você aprovar a foto.
+            </Text>
+          )}
           {(Object.keys(labels) as RemotePunch["type"][]).map((t) => (
             <Pressable
               key={t}
@@ -443,11 +513,19 @@ export function RemoteClock({
           )}
           {photo ? (
             <>
-              {button("Confirmar marcação remota", () => void confirm())}
+              {button(
+                online
+                  ? "Confirmar marcação remota"
+                  : "Aprovar foto e registrar offline",
+                () => void confirm(),
+              )}
               {button("Refazer foto", () => setPhoto(null))}
             </>
           ) : (
-            button("Capturar selfie remota", () => void capture())
+            button(
+              online ? "Capturar selfie" : "Tirar foto para o ponto offline",
+              () => void capture(),
+            )
           )}
           {!!message && <Text style={s.error}>{message}</Text>}
           {button("Cancelar ponto remoto", () => {
@@ -478,6 +556,7 @@ const s = StyleSheet.create({
   buttonText: { color: "white", fontWeight: "700" },
   message: { color: "#174c52", padding: 8 },
   error: { color: "#a32929" },
+  offlineNotice: { color: "#7a4f00", fontWeight: "600" },
   modal: { padding: 24, paddingTop: 55, gap: 12 },
   camera: { height: 320, width: "100%", borderRadius: 16 },
   choice: { padding: 10, backgroundColor: "#edf6f5", borderRadius: 8 },

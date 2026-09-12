@@ -19,6 +19,15 @@ import {
 } from "../services/selfie.service.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 export const remotePunchRouter = Router();
+const punchLabels: Record<
+  "CLOCK_IN" | "BREAK_OUT" | "BREAK_IN" | "CLOCK_OUT",
+  string
+> = {
+  CLOCK_IN: "Entrada",
+  BREAK_OUT: "Saída para intervalo",
+  BREAK_IN: "Retorno do intervalo",
+  CLOCK_OUT: "Saída",
+};
 const safe =
   (fn: (req: Request, res: Response) => Promise<unknown>) =>
   (req: Request, res: Response, next: NextFunction) => {
@@ -81,12 +90,10 @@ remotePunchRouter.post(
       e = await context(req);
     if (!e) return res.sendStatus(403);
     if (d.employeeId !== Number(e.id))
-      return res
-        .status(403)
-        .json({
-          message:
-            "Esta marcação pertence a outra conta. Entre com o funcionário que a registrou.",
-        });
+      return res.status(403).json({
+        message:
+          "Esta marcação pertence a outra conta. Entre com o funcionário que a registrou.",
+      });
     const { deviceSecret, offline, ...content } = d;
     const hash = createHash("sha256")
       .update(JSON.stringify(content))
@@ -168,16 +175,30 @@ remotePunchRouter.post(
         .slice(0, 19)
         .replace("T", " ");
       let workDate = captured.slice(0, 10);
-      // Link a closing/interval punch to the most recent open entry, including overnight work.
+      // Link non-entry punches to the most recent journey date, including overnight work and retries after CLOCK_OUT.
       if (d.type !== "CLOCK_IN") {
         const [previous] = await gate.query<any[]>(
           "SELECT entry_type,scheduled_work_date,registered_at FROM time_entries WHERE tenant_id=? AND employee_id=? AND registered_at<=? AND registered_at>=DATE_SUB(?,INTERVAL 24 HOUR) ORDER BY registered_at DESC,id DESC LIMIT 1",
           [req.auth!.tenantId, e.id, captured, captured],
         );
         const p = previous[0];
-        if (p && p.entry_type !== "CLOCK_OUT")
+        if (p)
           workDate = (p.scheduled_work_date || p.registered_at).slice(0, 10);
       }
+      const [duplicate] = await gate.query<any[]>(
+        `SELECT id,entry_type FROM time_entries
+          WHERE tenant_id=? AND employee_id=? AND entry_type=?
+            AND COALESCE(scheduled_work_date,DATE(registered_at))=?
+          LIMIT 1`,
+        [req.auth!.tenantId, e.id, d.type, workDate],
+      );
+      if (duplicate[0])
+        return res.status(409).json({
+          message: `${punchLabels[d.type]} já foi registrada nesta jornada. Não é permitido repetir a mesma marcação no mesmo dia de trabalho.`,
+          code: "DUPLICATE_PUNCH_TYPE",
+          existingId: Number(duplicate[0].id),
+          workDate,
+        });
       await gate.beginTransaction();
       const [result] = await gate.query<any>(
         `INSERT INTO time_entries(tenant_id,company_id,employee_id,entry_type,registered_at,source,manually_adjusted,created_by_user_id,created_at,device_id,device_binding_id,scheduled_work_date,schedule_decision) VALUES (?,?,?,?,?,?,0,?,${BRASILIA_NOW_SQL},?,?,?,'NOT_REQUIRED')`,

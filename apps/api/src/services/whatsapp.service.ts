@@ -49,6 +49,13 @@ async function connect(tenant: number, company: number) {
       previous.next > Date.now())
   )
     return;
+  if (previous) {
+    // Pairing commonly closes once with restartRequired. Flush the credentials
+    // written by Baileys before creating the replacement socket.
+    await previous.writes.catch(() => {});
+    previous.stopped = true;
+    previous.socket?.end(undefined);
+  }
   const c: Connection = {
     status: "CONNECTING",
     qr: null,
@@ -134,23 +141,34 @@ async function connect(tenant: number, company: number) {
   socket.ev.on("connection.update", (update) => {
     void (async () => {
       if (c.stopped) return;
+      if (update.connection === "connecting" && c.status !== "QR")
+        c.status = "CONNECTING";
       if (update.qr) {
-        c.qr = await QRCode.toDataURL(update.qr);
+        const qr = await QRCode.toDataURL(update.qr);
+        if (
+          c.stopped ||
+          c.socket !== socket ||
+          ["CONNECTED", "RECONNECTING", "LOGGED_OUT"].includes(c.status)
+        )
+          return;
+        c.qr = qr;
         c.status = "QR";
       }
       if (update.connection === "open") {
+        await c.writes.catch(() => {});
         c.qr = null;
+        c.next = 0;
         c.status = "CONNECTED";
         c.phone = socket.user?.id.split(":")[0].split("@")[0];
       }
       if (update.connection === "close") {
         c.qr = null;
-        c.status = "DISCONNECTED";
-        c.next = Date.now() + 15000;
+        c.phone = undefined;
         const code = (update.lastDisconnect?.error as any)?.output?.statusCode;
         if (code === DisconnectReason.loggedOut) {
+          c.status = "LOGGED_OUT";
           c.stopped = true;
-          await c.writes;
+          await c.writes.catch(() => {});
           await pool.query(
             "UPDATE company_automation SET whatsapp_enabled=0 WHERE tenant_id=? AND company_id=?",
             [tenant, company],
@@ -159,7 +177,16 @@ async function connect(tenant: number, company: number) {
             "DELETE FROM whatsapp_auth WHERE tenant_id=? AND company_id=?",
             [tenant, company],
           );
+          return;
         }
+        // A restart immediately after scanning the QR is expected by Baileys.
+        // Reconnect only after all auth writes are durable.
+        await c.writes.catch(() => {});
+        c.status = "RECONNECTING";
+        c.next =
+          code === DisconnectReason.restartRequired
+            ? Date.now()
+            : Date.now() + 5000;
       }
     })().catch(() => {
       c.status = "ERROR";

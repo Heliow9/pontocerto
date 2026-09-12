@@ -44,8 +44,31 @@ export async function updateQueue(
     if (locks.get(employee) === operation) locks.delete(employee);
   }
 }
+const punchLabels: Record<RemotePunch["type"], string> = {
+  CLOCK_IN: "Entrada",
+  BREAK_OUT: "Saída para intervalo",
+  BREAK_IN: "Retorno do intervalo",
+  CLOCK_OUT: "Saída",
+};
+function localDayKey(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 export function addToQueue(items: RemotePunch[], punch: RemotePunch) {
   if (items.some((i) => i.requestKey === punch.requestKey)) return items;
+  const day = localDayKey(punch.capturedAt);
+  if (
+    items.some(
+      (i) => i.type === punch.type && localDayKey(i.capturedAt) === day,
+    )
+  )
+    throw new Error(
+      `${punchLabels[punch.type]} já foi registrada offline neste dia. Sincronize as marcações pendentes antes de tentar novamente.`,
+    );
   const next = [...items, punch];
   if (next.length > 10 || JSON.stringify(next).length > 3500000)
     throw new Error(

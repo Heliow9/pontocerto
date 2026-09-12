@@ -16,6 +16,8 @@ const labels: Record<string, string> = {
   CONNECTING: "Conectando",
   CONNECTED: "Conectado",
   QR: "Escaneie o QR Code",
+  RECONNECTING: "Reconectando",
+  LOGGED_OUT: "Sessão encerrada",
   ERROR: "Falha de conexão",
   AUTH_ERROR: "Falha ao salvar sessão",
   PENDING: "Na fila",
@@ -87,6 +89,20 @@ export function CompanyAutomation({ id }: { id: number }) {
       setBusy(false);
     }
   }
+  const whatsappState = status?.status || "DISCONNECTED";
+  const activeWhatsappStates = new Set([
+    "CONNECTING",
+    "QR",
+    "CONNECTED",
+    "RECONNECTING",
+    "ERROR",
+    "AUTH_ERROR",
+  ]);
+  const canConnect =
+    Boolean(status?.ready) &&
+    ["DISCONNECTED", "LOGGED_OUT"].includes(whatsappState);
+  const canDisconnect =
+    Boolean(status?.ready) && activeWhatsappStates.has(whatsappState);
   return (
     <section
       className="card company-automation"
@@ -246,7 +262,7 @@ export function CompanyAutomation({ id }: { id: number }) {
           <button
             type="button"
             className="secondary"
-            disabled={busy || !status?.ready}
+            disabled={busy || !canConnect}
             onClick={() => void action("connect")}
           >
             Conectar WhatsApp
@@ -254,7 +270,7 @@ export function CompanyAutomation({ id }: { id: number }) {
           <button
             type="button"
             className="ghost"
-            disabled={busy || !status?.ready}
+            disabled={busy || !canDisconnect}
             onClick={() => void action("disconnect")}
           >
             Desconectar WhatsApp

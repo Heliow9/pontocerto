@@ -20,3 +20,4 @@ dist-android-check/
 .deploy-backups/
 
 **/google-services.json
+*.zip

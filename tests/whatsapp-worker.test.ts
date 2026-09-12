@@ -29,7 +29,7 @@ vi.mock("@whiskeysockets/baileys", () => ({
     replacer: (_k: string, v: any) => v,
     reviver: (_k: string, v: any) => v,
   },
-  DisconnectReason: { loggedOut: 401 },
+  DisconnectReason: { loggedOut: 401, restartRequired: 515 },
   initAuthCreds: () => ({ registered: false }),
   generateMessageIDV2: () => "message-1",
   proto: { Message: { AppStateSyncKeyData: { fromObject: (v: any) => v } } },
@@ -117,4 +117,47 @@ it("não conecta outra instância quando o lock do serviço pertence a outro pro
   await worker.runWhatsAppTick();
   expect(m.socket).not.toHaveBeenCalled();
   expect(m.send).not.toHaveBeenCalled();
+});
+
+it("reconecta após restart requerido no pareamento sem ficar preso em conectando", async () => {
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  expect(m.socket).toHaveBeenCalledTimes(1);
+  m.events["connection.update"]({ qr: "fixture-qr" });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(worker.whatsappStatus(7, 2).status).toBe("QR");
+  m.events["connection.update"]({
+    connection: "close",
+    lastDisconnect: { error: { output: { statusCode: 515 } } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(worker.whatsappStatus(7, 2).status).toBe("RECONNECTING");
+  await worker.runWhatsAppTick();
+  expect(m.socket).toHaveBeenCalledTimes(2);
+});
+
+it("marca logout e remove a sessão persistida", async () => {
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({
+    connection: "close",
+    lastDisconnect: { error: { output: { statusCode: 401 } } },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(worker.whatsappStatus(7, 2).status).toBe("LOGGED_OUT");
+  expect(
+    m.query.mock.calls.some(([sql]) =>
+      String(sql).includes("DELETE FROM whatsapp_auth"),
+    ),
+  ).toBe(true);
+});
+
+it("não deixa um QR atrasado sobrescrever o estado conectado", async () => {
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ qr: "fixture-qr" });
+  m.events["connection.update"]({ connection: "open" });
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(worker.whatsappStatus(7, 2).status).toBe("CONNECTED");
+  expect(worker.whatsappStatus(7, 2).qr).toBeNull();
 });
