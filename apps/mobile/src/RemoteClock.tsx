@@ -18,6 +18,7 @@ import * as Network from "expo-network";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
 import { useFeedback } from "./feedback";
+import { remoteClockVisibility } from "./remote-ui";
 import {
   addToQueue,
   readQueue,
@@ -416,11 +417,21 @@ export function RemoteClock({
       <Text style={s.buttonText}>{title}</Text>
     </Pressable>
   );
-  if (!policy?.enabled && !queue.length) return null;
+  const visibility = remoteClockVisibility({
+    online,
+    policyEnabled: Boolean(policy?.enabled),
+    offlineEnabled: Boolean(policy?.offlineEnabled),
+    pendingCount: queue.length,
+  });
+  if (!visibility.showCard) return null;
   return (
     <View style={s.card}>
-      <Text style={s.title}>Ponto de qualquer lugar</Text>
-      <Text>Com selfie, sem exigir localização.</Text>
+      {!online && (
+        <>
+          <Text style={s.title}>Ponto offline</Text>
+          <Text>Com selfie, sem exigir localização.</Text>
+        </>
+      )}
       {!online && policy?.offlineEnabled && (
         <Text style={s.offlineNotice}>
           Sem internet: o modo offline está disponível. A marcação ficará salva
@@ -432,15 +443,15 @@ export function RemoteClock({
           Sem internet. Esta empresa não autoriza marcação offline.
         </Text>
       )}
-      <Text>
-        O horário do aparelho ficará identificado no registro. Confira data e
-        hora antes de marcar.
-      </Text>
-      {online
-        ? button("Registrar ponto remoto", () => void open())
-        : policy?.offlineEnabled
-          ? button("Registrar ponto offline", () => void open())
-          : null}
+      {!online && (
+        <Text>
+          O horário do aparelho ficará identificado no registro. Confira data e
+          hora antes de marcar.
+        </Text>
+      )}
+      {visibility.showCapture
+        ? button("Registrar ponto offline", () => void open())
+        : null}
       {!!queue.length && (
         <>
           <Text style={s.title}>
@@ -481,7 +492,7 @@ export function RemoteClock({
       >
         <ScrollView contentContainerStyle={s.modal}>
           <Text style={s.title}>
-            {online ? "Registrar ponto remoto" : "Registrar ponto offline"}
+            Registrar ponto offline
           </Text>
           <Text>
             Escolha a marcação. Entradas e retornos iniciam períodos; saídas os

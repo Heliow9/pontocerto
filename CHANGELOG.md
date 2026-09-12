@@ -20,3 +20,9 @@
 
 - Geofence e Mapbox.
 - Reconhecimento facial AWS, agora legado e desativado pela v0.4.
+
+## 2026-09-12 - Correções de interface offline e WhatsApp
+- O card de ponto offline não é exibido enquanto o aparelho está online (salvo status de fila pendente, sem botão de nova captura).
+- A captura offline continua exigindo câmera, prévia e confirmação/refazer antes de salvar.
+- No painel da empresa, `Conectar WhatsApp` só aparece quando a sessão está realmente desconectada/encerrada.
+- Quando conectado, o painel mostra somente `Desconectar WhatsApp`; estados de conexão/QR/reconexão não oferecem um segundo pareamento.

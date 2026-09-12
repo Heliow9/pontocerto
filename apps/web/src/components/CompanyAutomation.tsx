@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { apiMessage } from "../utils";
+import { whatsappActionVisibility } from "./whatsapp-ui";
 type Recipient = { name: string; phone: string };
 type Settings = {
   overtimeEnabled: boolean;
@@ -90,19 +91,10 @@ export function CompanyAutomation({ id }: { id: number }) {
     }
   }
   const whatsappState = status?.status || "DISCONNECTED";
-  const activeWhatsappStates = new Set([
-    "CONNECTING",
-    "QR",
-    "CONNECTED",
-    "RECONNECTING",
-    "ERROR",
-    "AUTH_ERROR",
-  ]);
-  const canConnect =
-    Boolean(status?.ready) &&
-    ["DISCONNECTED", "LOGGED_OUT"].includes(whatsappState);
-  const canDisconnect =
-    Boolean(status?.ready) && activeWhatsappStates.has(whatsappState);
+  const { showConnect, showDisconnect } = whatsappActionVisibility(
+    whatsappState,
+    Boolean(status?.ready),
+  );
   return (
     <section
       className="card company-automation"
@@ -259,22 +251,26 @@ export function CompanyAutomation({ id }: { id: number }) {
             conexão usa Baileys e pode exigir novo pareamento. Ao conectar, os
             alertas serão enviados aos números salvos acima.
           </p>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || !canConnect}
-            onClick={() => void action("connect")}
-          >
-            Conectar WhatsApp
-          </button>{" "}
-          <button
-            type="button"
-            className="ghost"
-            disabled={busy || !canDisconnect}
-            onClick={() => void action("disconnect")}
-          >
-            Desconectar WhatsApp
-          </button>
+          {showConnect && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={busy}
+              onClick={() => void action("connect")}
+            >
+              Conectar WhatsApp
+            </button>
+          )}{" "}
+          {showDisconnect && (
+            <button
+              type="button"
+              className="ghost"
+              disabled={busy}
+              onClick={() => void action("disconnect")}
+            >
+              Desconectar WhatsApp
+            </button>
+          )}
           {message && <p role="status">{message}</p>}
           <h4>Acompanhamento mensal</h4>
           <label>
