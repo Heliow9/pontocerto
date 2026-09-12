@@ -11,6 +11,7 @@ import QRCode from "qrcode";
 import { createHash } from "node:crypto";
 import { pool } from "../db/pool.js";
 import { encryptSession, decryptSession } from "./whatsapp-crypto.js";
+import { writeSystemLog } from "./system-log.service.js";
 import {
   consolidateOvertimeAlertMessage,
   receiptState,
@@ -42,6 +43,19 @@ export function whatsappStatus(tenant: number, company: number) {
     qr: c?.qr || null,
     phone: c?.phone || null,
   };
+}
+function logWhatsApp(tenantId: number, companyId: number, eventType: string, message: string, options: { level?: "INFO" | "WARNING" | "ERROR"; recipient?: string | null; employeeId?: number | null; details?: unknown } = {}) {
+  void writeSystemLog({
+    tenantId,
+    companyId,
+    level: options.level || "INFO",
+    module: "WHATSAPP",
+    eventType,
+    message,
+    recipient: options.recipient || null,
+    employeeId: options.employeeId || null,
+    details: options.details,
+  });
 }
 async function connect(tenant: number, company: number) {
   const identity = `${tenant}:${company}`,
@@ -165,6 +179,7 @@ async function connect(tenant: number, company: number) {
         c.next = 0;
         c.status = "CONNECTED";
         c.phone = socket.user?.id.split(":")[0].split("@")[0];
+        logWhatsApp(tenant, company, "WHATSAPP_CONNECTED", "WhatsApp conectado com sucesso.", { details: { phone: c.phone || null } });
       }
       if (update.connection === "close") {
         c.qr = null;
@@ -182,6 +197,7 @@ async function connect(tenant: number, company: number) {
             "DELETE FROM whatsapp_auth WHERE tenant_id=? AND company_id=?",
             [tenant, company],
           );
+          logWhatsApp(tenant, company, "WHATSAPP_LOGGED_OUT", "Sessão do WhatsApp foi encerrada.", { level: "WARNING", details: { disconnectCode: code ?? null } });
           return;
         }
         // A restart immediately after scanning the QR is expected by Baileys.
@@ -192,9 +208,11 @@ async function connect(tenant: number, company: number) {
           code === DisconnectReason.restartRequired
             ? Date.now()
             : Date.now() + 5000;
+        logWhatsApp(tenant, company, "WHATSAPP_RECONNECTING", "WhatsApp entrou em reconexão.", { level: "WARNING", details: { disconnectCode: code ?? null, restartRequired: code === DisconnectReason.restartRequired } });
       }
-    })().catch(() => {
+    })().catch((error) => {
       c.status = "ERROR";
+      logWhatsApp(tenant, company, "WHATSAPP_CONNECTION_ERROR", "Falha ao atualizar a conexão do WhatsApp.", { level: "ERROR", details: { error: (error as any)?.message || String(error) } });
     });
   });
   socket.ev.on("messages.update", (updates) => {
@@ -212,20 +230,23 @@ async function connect(tenant: number, company: number) {
       const messageId = update?.key?.id;
       const state = receiptState(update?.receipt);
       if (!messageId || !state) continue;
-      if (state === "READ")
+      if (state === "READ") {
         void pool
           .query(
             "UPDATE overtime_alerts SET status='READ',error_code=NULL WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','ACCEPTED','UNKNOWN','DELIVERED')",
             [tenant, company, messageId],
           )
           .catch(() => {});
-      else
+        logWhatsApp(tenant, company, "WHATSAPP_READ", "Mensagem do WhatsApp foi lida.", { details: { messageId } });
+      } else {
         void pool
           .query(
             "UPDATE overtime_alerts SET status='DELIVERED',error_code=NULL WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','ACCEPTED','UNKNOWN')",
             [tenant, company, messageId],
           )
           .catch(() => {});
+        logWhatsApp(tenant, company, "WHATSAPP_DELIVERED", "Mensagem do WhatsApp foi entregue.", { details: { messageId } });
+      }
     }
   });
 }
@@ -244,6 +265,7 @@ export async function disconnectWhatsApp(tenant: number, company: number) {
     "DELETE FROM whatsapp_auth WHERE tenant_id=? AND company_id=?",
     [tenant, company],
   );
+  logWhatsApp(tenant, company, "WHATSAPP_DISCONNECTED", "WhatsApp desconectado pelo painel.", { level: "WARNING" });
 }
 export async function runWhatsAppTick() {
   if (busy) return;
@@ -278,9 +300,18 @@ export async function runWhatsAppTick() {
     // acknowledgement arrives within ten minutes, keep the record visible as
     // uncertain instead of reporting a false delivery success. A later ACK can
     // still move UNKNOWN to DELIVERED.
+    const [timedOut] = await pool.query<any[]>(
+      `SELECT tenant_id,company_id,employee_id,recipient,message_id
+         FROM overtime_alerts
+        WHERE status='ACCEPTED' AND sent_at IS NOT NULL
+          AND sent_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)
+        GROUP BY tenant_id,company_id,employee_id,recipient,message_id`,
+    );
     await pool.query(
       "UPDATE overtime_alerts SET status='UNKNOWN',error_code='ACK_TIMEOUT' WHERE status='ACCEPTED' AND sent_at IS NOT NULL AND sent_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)",
     );
+    for (const item of timedOut)
+      logWhatsApp(Number(item.tenant_id), Number(item.company_id), "WHATSAPP_ACK_TIMEOUT", "WhatsApp não confirmou a entrega dentro do prazo esperado.", { level: "WARNING", recipient: item.recipient, employeeId: Number(item.employee_id), details: { messageId: item.message_id } });
     const [companies] = await pool.query<any[]>(
       `SELECT a.* FROM company_automation a JOIN companies c ON c.id=a.company_id AND c.tenant_id=a.tenant_id AND c.active=1 JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE' WHERE a.whatsapp_enabled=1 AND a.overtime_enabled=1`,
     );
@@ -294,12 +325,13 @@ export async function runWhatsAppTick() {
         connections.delete(identity);
       }
     for (const company of companies)
-      await connect(company.tenant_id, company.company_id).catch(() => {
+      await connect(company.tenant_id, company.company_id).catch((error) => {
         const c = connections.get(`${company.tenant_id}:${company.company_id}`);
         if (c) {
           c.status = "ERROR";
           c.next = Date.now() + 60000;
         }
+        logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_CONNECT_ERROR", "Não foi possível estabelecer a conexão do WhatsApp.", { level: "ERROR", details: { error: (error as any)?.message || String(error) } });
       });
     for (const company of companies) {
       const c = connections.get(`${company.tenant_id}:${company.company_id}`);
@@ -319,6 +351,7 @@ export async function runWhatsAppTick() {
           "UPDATE overtime_alerts SET status='CANCELED',error_code='RECIPIENT_REMOVED' WHERE id=? AND status='PENDING'",
           [alert.id],
         );
+        logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_RECIPIENT_REMOVED", "Alerta cancelado porque o destinatário foi removido da configuração.", { level: "WARNING", recipient: alert.recipient, employeeId: Number(alert.employee_id) });
         continue;
       }
 
@@ -356,6 +389,7 @@ export async function runWhatsAppTick() {
             WHERE id IN (${placeholders}) AND status='PENDING'`,
           ids,
         );
+        logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_RATE_LIMITED", "Envio retido temporariamente pelo limite de mensagens.", { level: "WARNING", recipient: alert.recipient, employeeId: Number(alert.employee_id), details: { sentCount, limit: WHATSAPP_MAX_MESSAGES_PER_HOUR } });
         continue;
       }
       if (rateRows[0]?.last_sent) {
@@ -371,6 +405,7 @@ export async function runWhatsAppTick() {
               WHERE id IN (${placeholders}) AND status='PENDING'`,
             [waitSeconds, ...ids],
           );
+          logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_THROTTLED", "Mensagem aguardando o intervalo mínimo entre envios.", { level: "INFO", recipient: alert.recipient, employeeId: Number(alert.employee_id), details: { waitSeconds } });
           continue;
         }
       }
@@ -391,6 +426,7 @@ export async function runWhatsAppTick() {
             WHERE id IN (${placeholders}) AND status='PENDING'`,
           [delay, ...ids],
         );
+        logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_RECIPIENT_LOOKUP_FAILED", "Não foi possível validar o destinatário no WhatsApp.", { level: "WARNING", recipient: alert.recipient, employeeId: Number(alert.employee_id), details: { retryInSeconds: delay } });
         continue;
       }
       if (!resolvedJid) {
@@ -400,6 +436,7 @@ export async function runWhatsAppTick() {
             WHERE id IN (${placeholders}) AND status='PENDING'`,
           ids,
         );
+        logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_INVALID_RECIPIENT", "Destinatário não encontrado no WhatsApp.", { level: "ERROR", recipient: alert.recipient, employeeId: Number(alert.employee_id) });
         continue;
       }
 
@@ -425,13 +462,15 @@ export async function runWhatsAppTick() {
             WHERE id IN (${placeholders}) AND status='SENDING'`,
           [acceptedId, ...ids],
         );
-      } catch {
+        logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_ACCEPTED", "Mensagem aceita para envio pelo WhatsApp.", { recipient: alert.recipient, employeeId: Number(alert.employee_id), details: { messageId: acceptedId, alertIds: ids } });
+      } catch (error) {
         await pool.query(
           `UPDATE overtime_alerts
               SET status='UNKNOWN',error_code='SEND_UNCONFIRMED',next_attempt_at=NULL
             WHERE id IN (${placeholders}) AND status='SENDING'`,
           ids,
         );
+        logWhatsApp(company.tenant_id, company.company_id, "WHATSAPP_SEND_ERROR", "Falha ou resultado incerto ao enviar mensagem pelo WhatsApp.", { level: "ERROR", recipient: alert.recipient, employeeId: Number(alert.employee_id), details: { error: (error as any)?.message || String(error), alertIds: ids } });
       }
     }
   } finally {

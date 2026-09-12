@@ -50,3 +50,13 @@
 - Falhas temporárias de consulta do destinatário usam backoff de 30s, 2min, 5min e 15min.
 - O painel diferencia Aceito, Entregue e Lida e informa retenção por limite/intervalo.
 - Migração `014_whatsapp_delivery_controls.sql` adiciona `next_attempt_at`, `attempt_count` e índices para a fila.
+
+## 2026-09-12 — V6 Logs por empresa
+- Nova área **Logs da empresa** dentro da edição da empresa no sistema Web.
+- Retenção automática de 90 dias com filtros rápidos de 24 horas, 7 dias, 30 dias e 90 dias.
+- Filtros por nível (Info, Aviso, Erro) e módulo (WhatsApp, Ponto, Offline, Sincronização, API, Sistema).
+- Nova tabela multi-tenant `system_logs`, isolada por `tenant_id` e `company_id`.
+- Instrumentação do WhatsApp para conexão, reconexão, desconexão, destinatário inválido, throttling/rate limit, envio aceito, entrega, leitura, ACK timeout e erros de envio.
+- Erros internos autenticados da API passam a gerar log sanitizado quando há contexto de empresa.
+- Telefone é mascarado na consulta do painel e dados sensíveis são removidos dos detalhes persistidos.
+- Worker diário remove automaticamente logs com mais de 90 dias.
