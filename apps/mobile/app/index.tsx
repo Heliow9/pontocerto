@@ -306,6 +306,7 @@ export default function App() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
   const [capturing, setCapturing] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [clockStep, setClockStep] = useState<string | null>(null);
   useEffect(() => {
     void restoreSession();
@@ -989,6 +990,7 @@ export default function App() {
       }
       pendingGeo.current = { geo, at: Date.now() };
       setSelfieUri(null);
+      setCameraReady(false);
       setCameraOpen(true);
     } catch (e: any) {
       setPunchError(
@@ -1010,7 +1012,7 @@ export default function App() {
   }
 
   async function captureSelfie() {
-    if (!cameraRef.current || capturing) return;
+    if (!cameraRef.current || capturing || !cameraReady) return;
     setCapturing(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({
@@ -1983,6 +1985,7 @@ export default function App() {
         onRequestClose={() => {
           if (!loading && !capturing) {
             setCameraOpen(false);
+            setCameraReady(false);
             setSelfieUri(null);
           }
         }}
@@ -1996,7 +1999,7 @@ export default function App() {
               <Text style={s.cameraSub}>
                 {selfieUri
                   ? "Confirme para validar e registrar sua marcação."
-                  : "Enquadre seu rosto em um local bem iluminado."}
+                  : "Posicione seu rosto dentro da área e aguarde a imagem ao vivo antes de tirar a foto."}
               </Text>
             </View>
             <Pressable
@@ -2006,6 +2009,7 @@ export default function App() {
               style={s.iconButton}
               onPress={() => {
                 setCameraOpen(false);
+                setCameraReady(false);
                 setSelfieUri(null);
               }}
             >
@@ -2027,10 +2031,20 @@ export default function App() {
                   style={{ flex: 1 }}
                   facing="front"
                   mirror
+                  onCameraReady={() => setCameraReady(true)}
+                  onMountError={() => {
+                    setCameraReady(false);
+                    Alert.alert("Câmera", "Não foi possível iniciar a câmera. Feche e abra novamente ou confira a permissão do navegador.");
+                  }}
                 />
                 <View pointerEvents="none" style={s.faceGuide}>
                   <View style={s.faceOval} />
                 </View>
+                {!cameraReady && (
+                  <View pointerEvents="none" style={s.cameraLoading}>
+                    <Text style={s.cameraLoadingText}>Iniciando câmera…</Text>
+                  </View>
+                )}
               </>
             )}
           </View>
@@ -2041,7 +2055,7 @@ export default function App() {
                   secondary
                   label="Tirar outra foto"
                   disabled={loading}
-                  onPress={() => setSelfieUri(null)}
+                  onPress={() => { setSelfieUri(null); setCameraReady(false); }}
                 />
                 <Action
                   label={clockStep || "Confirmar e registrar ponto"}
@@ -2052,8 +2066,8 @@ export default function App() {
             ) : (
               <Action
                 icon="camera-outline"
-                label={capturing ? "Capturando…" : "Tirar foto"}
-                disabled={capturing}
+                label={!cameraReady ? "Iniciando câmera…" : capturing ? "Capturando…" : "Tirar foto"}
+                disabled={capturing || !cameraReady}
                 onPress={captureSelfie}
               />
             )}
@@ -2489,6 +2503,17 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  cameraLoading: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  cameraLoadingText: { color: "white", fontSize: 16, fontWeight: "800" },
   faceOval: {
     width: "65%",
     height: "75%",

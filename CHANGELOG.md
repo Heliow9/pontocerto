@@ -1,4 +1,12 @@
 # Changelog
+## 2026-09-12 — Câmera com pré-visualização antes da captura
+
+- A câmera da marcação normal e do ponto offline/remoto agora só libera o botão de foto após `onCameraReady`.
+- Enquanto o vídeo ao vivo não estiver pronto, a interface mostra `Iniciando câmera…`.
+- Foi adicionada orientação visual para posicionar o rosto dentro da área antes da captura.
+- Ao refazer a foto, o fluxo aguarda novamente a câmera ficar pronta.
+- Erros de inicialização da câmera exibem mensagem ao usuário em vez de permitir captura sem prévia.
+
 
 ## v0.4.0
 

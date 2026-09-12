@@ -44,6 +44,7 @@ export function RemoteClock({
     [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [cameraOpen, setCameraOpen] = useState(false),
+    [cameraReady, setCameraReady] = useState(false),
     [online, setOnline] = useState(
       Platform.OS === "web"
         ? typeof navigator === "undefined" || navigator.onLine
@@ -330,6 +331,7 @@ export function RemoteClock({
       if (!permission?.granted && !(await requestPermission()).granted)
         throw new Error("Permita o uso da câmera para registrar a selfie.");
       setPhoto(null);
+      setCameraReady(false);
       setCameraOpen(true);
     } catch (e: any) {
       setMessage(e.message);
@@ -339,7 +341,7 @@ export function RemoteClock({
     }
   }
   async function capture() {
-    if (lock.current) return;
+    if (lock.current || !cameraReady) return;
     lock.current = true;
     setBusy(true);
     try {
@@ -406,13 +408,13 @@ export function RemoteClock({
     }
     void sync(true);
   }
-  const button = (title: string, fn: () => void) => (
+  const button = (title: string, fn: () => void, disabled = false) => (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={title}
-      disabled={busy}
+      disabled={busy || disabled}
       onPress={fn}
-      style={[s.button, busy && { opacity: 0.5 }]}
+      style={[s.button, (busy || disabled) && { opacity: 0.5 }]}
     >
       <Text style={s.buttonText}>{title}</Text>
     </Pressable>
@@ -485,6 +487,7 @@ export function RemoteClock({
         onRequestClose={() => {
           if (!busy) {
             setCameraOpen(false);
+            setCameraReady(false);
             credential.current = { uid: null, secret: null };
           }
         }}
@@ -520,7 +523,31 @@ export function RemoteClock({
           {photo ? (
             <Image source={{ uri: photo.uri }} style={s.camera} />
           ) : (
-            <CameraView ref={camera} facing="front" style={s.camera} />
+            <View style={s.cameraFrame}>
+              <CameraView
+                ref={camera}
+                facing="front"
+                style={s.camera}
+                onCameraReady={() => setCameraReady(true)}
+                onMountError={() => {
+                  setCameraReady(false);
+                  setMessage("Não foi possível iniciar a câmera. Feche e abra novamente ou confira a permissão do navegador.");
+                }}
+              />
+              <View pointerEvents="none" style={s.faceGuide}>
+                <View style={s.faceOval} />
+              </View>
+              {!cameraReady && (
+                <View pointerEvents="none" style={s.cameraLoading}>
+                  <Text style={s.cameraLoadingText}>Iniciando câmera…</Text>
+                </View>
+              )}
+            </View>
+          )}
+          {!photo && (
+            <Text style={s.cameraHint}>
+              Posicione seu rosto dentro da área e aguarde a imagem ao vivo antes de tocar em Tirar foto.
+            </Text>
           )}
           {photo ? (
             <>
@@ -530,17 +557,19 @@ export function RemoteClock({
                   : "Aprovar foto e registrar offline",
                 () => void confirm(),
               )}
-              {button("Refazer foto", () => setPhoto(null))}
+              {button("Refazer foto", () => { setPhoto(null); setCameraReady(false); })}
             </>
           ) : (
             button(
               online ? "Capturar selfie" : "Tirar foto para o ponto offline",
               () => void capture(),
+              !cameraReady,
             )
           )}
           {!!message && <Text style={s.error}>{message}</Text>}
           {button("Cancelar ponto remoto", () => {
             setCameraOpen(false);
+            setCameraReady(false);
             credential.current = { uid: null, secret: null };
           })}
         </ScrollView>
@@ -569,6 +598,12 @@ const s = StyleSheet.create({
   error: { color: "#a32929" },
   offlineNotice: { color: "#7a4f00", fontWeight: "600" },
   modal: { padding: 24, paddingTop: 55, gap: 12 },
-  camera: { height: 320, width: "100%", borderRadius: 16 },
+  cameraFrame: { height: 320, width: "100%", borderRadius: 16, overflow: "hidden", backgroundColor: "#07131f", position: "relative" },
+  camera: { height: 320, width: "100%" },
+  faceGuide: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, alignItems: "center", justifyContent: "center" },
+  faceOval: { width: "62%", height: "76%", maxWidth: 240, borderRadius: 150, borderWidth: 2, borderColor: "white" },
+  cameraLoading: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)" },
+  cameraLoadingText: { color: "white", fontWeight: "700", fontSize: 16 },
+  cameraHint: { color: "#174c52", fontWeight: "600", textAlign: "center" },
   choice: { padding: 10, backgroundColor: "#edf6f5", borderRadius: 8 },
 });
