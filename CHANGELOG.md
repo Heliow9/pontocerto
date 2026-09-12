@@ -60,3 +60,5 @@
 - Erros internos autenticados da API passam a gerar log sanitizado quando há contexto de empresa.
 - Telefone é mascarado na consulta do painel e dados sensíveis são removidos dos detalhes persistidos.
 - Worker diário remove automaticamente logs com mais de 90 dias.
+
+- Compatibilidade de banco: `system_logs.details_json` usa `LONGTEXT` em vez de `JSON` nativo, permitindo deploy em versões de MySQL/MariaDB sem suporte ao tipo JSON.
