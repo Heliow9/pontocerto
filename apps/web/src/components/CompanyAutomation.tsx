@@ -23,7 +23,8 @@ const labels: Record<string, string> = {
   AUTH_ERROR: "Falha ao salvar sessão",
   PENDING: "Na fila",
   SENDING: "Enviando",
-  SENT: "Enviado",
+  SENT: "Aceito pelo WhatsApp",
+  ACCEPTED: "Aceito pelo WhatsApp",
   DELIVERED: "Entregue",
   UNKNOWN: "Envio não confirmado",
   CANCELED: "Cancelado",
@@ -331,9 +332,10 @@ export function CompanyAutomation({ id }: { id: number }) {
           </div>
           <h4>Últimos alertas</h4>
           <p>
-            “Enviado” indica aceitação pelo serviço. “Entregue” depende de
-            confirmação do WhatsApp. Envios incertos não são repetidos
-            automaticamente.
+            “Aceito pelo WhatsApp” indica que o envio foi aceito pelo serviço,
+            mas ainda não houve confirmação de entrega. “Entregue” depende do
+            ACK do WhatsApp. Destinatários inválidos e timeouts ficam
+            identificados para diagnóstico.
           </p>
           {alerts.length === 0 ? (
             <p>Nenhum alerta registrado.</p>
@@ -347,6 +349,7 @@ export function CompanyAutomation({ id }: { id: number }) {
                       ? "Ultrapassou"
                       : `${a.threshold_key}%`}{" "}
                     · {labels[a.status] || a.status}
+                    {a.error_code ? ` · ${a.error_code}` : ""}
                   </summary>
                   <p style={{ whiteSpace: "pre-wrap" }}>{a.message_text}</p>
                 </details>

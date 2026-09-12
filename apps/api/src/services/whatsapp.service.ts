@@ -195,7 +195,7 @@ async function connect(tenant: number, company: number) {
       if (u.key.fromMe && u.key.id && Number(u.update.status) >= 3)
         void pool
           .query(
-            "UPDATE overtime_alerts SET status='DELIVERED' WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','UNKNOWN')",
+            "UPDATE overtime_alerts SET status='DELIVERED' WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','ACCEPTED','UNKNOWN')",
             [tenant, company, u.key.id],
           )
           .catch(() => {});
@@ -246,6 +246,13 @@ export async function runWhatsAppTick() {
       );
     }
     await leader.ping();
+    // A sendMessage result only confirms local/server acceptance. If no delivery
+    // acknowledgement arrives within ten minutes, keep the record visible as
+    // uncertain instead of reporting a false delivery success. A later ACK can
+    // still move UNKNOWN to DELIVERED.
+    await pool.query(
+      "UPDATE overtime_alerts SET status='UNKNOWN',error_code='ACK_TIMEOUT' WHERE status='ACCEPTED' AND sent_at IS NOT NULL AND sent_at < DATE_SUB(NOW(), INTERVAL 10 MINUTE)",
+    );
     const [companies] = await pool.query<any[]>(
       `SELECT a.* FROM company_automation a JOIN companies c ON c.id=a.company_id AND c.tenant_id=a.tenant_id AND c.active=1 JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE' WHERE a.whatsapp_enabled=1 AND a.overtime_enabled=1`,
     );
@@ -286,20 +293,41 @@ export async function runWhatsAppTick() {
         );
         continue;
       }
+      let resolvedJid: string | null = null;
+      try {
+        const lookup = await c.socket.onWhatsApp(alert.recipient);
+        const match = Array.isArray(lookup)
+          ? lookup.find((item: any) => item?.exists && item?.jid)
+          : null;
+        resolvedJid = match?.jid || null;
+      } catch {
+        await pool.query(
+          "UPDATE overtime_alerts SET error_code='RECIPIENT_LOOKUP_FAILED' WHERE id=? AND status='PENDING'",
+          [alert.id],
+        );
+        continue;
+      }
+      if (!resolvedJid) {
+        await pool.query(
+          "UPDATE overtime_alerts SET status='CANCELED',error_code='INVALID_RECIPIENT' WHERE id=? AND status='PENDING'",
+          [alert.id],
+        );
+        continue;
+      }
       const messageId = generateMessageIDV2(c.socket.user?.id);
       const [claim] = await pool.query<any>(
-        "UPDATE overtime_alerts SET status='SENDING',message_id=? WHERE id=? AND status='PENDING'",
+        "UPDATE overtime_alerts SET status='SENDING',message_id=?,error_code=NULL WHERE id=? AND status='PENDING'",
         [messageId, alert.id],
       );
       if (!claim.affectedRows) continue;
       try {
         const result = await c.socket.sendMessage(
-          `${alert.recipient}@s.whatsapp.net`,
+          resolvedJid,
           { text: alert.message_text },
           { messageId },
         );
         await pool.query(
-          "UPDATE overtime_alerts SET status='SENT',message_id=?,sent_at=NOW() WHERE id=? AND status='SENDING'",
+          "UPDATE overtime_alerts SET status='ACCEPTED',message_id=?,sent_at=NOW(),error_code=NULL WHERE id=? AND status='SENDING'",
           [result?.key.id || messageId, alert.id],
         );
       } catch {

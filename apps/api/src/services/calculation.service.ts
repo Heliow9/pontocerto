@@ -60,10 +60,24 @@ const absenceStatusMap: Record<string, string> = {
 
 export function pairWorkedMinutes(entries: TimeEntryRow[]): number {
   const timestampMinutes=(value:string)=>Date.parse(`${value.slice(0,10)}T00:00:00Z`)/60000+dateTimeMinutes(value);
+  const typePriority: Record<string, number> = {
+    CLOCK_IN: 0,
+    BREAK_OUT: 1,
+    BREAK_IN: 2,
+    CLOCK_OUT: 3,
+    OTHER: 4,
+  };
+  const ordered = [...entries].sort((a, b) => {
+    const byTime = timestampMinutes(a.registered_at) - timestampMinutes(b.registered_at);
+    if (byTime) return byTime;
+    const byType = (typePriority[a.entry_type || "OTHER"] ?? 9) - (typePriority[b.entry_type || "OTHER"] ?? 9);
+    if (byType) return byType;
+    return Number(a.id || 0) - Number(b.id || 0);
+  });
   let total = 0;
-  if (entries.every((e) => e.entry_type && e.entry_type !== "OTHER")) {
+  if (ordered.every((e) => e.entry_type && e.entry_type !== "OTHER")) {
     let open: TimeEntryRow | null = null;
-    for (const entry of entries) {
+    for (const entry of ordered) {
       if (entry.entry_type === "CLOCK_IN" || entry.entry_type === "BREAK_IN") {
         if (!open) open = entry;
       } else if (
@@ -80,9 +94,9 @@ export function pairWorkedMinutes(entries: TimeEntryRow[]): number {
     }
     return total;
   }
-  for (let i = 0; i + 1 < entries.length; i += 2) {
-    const start = timestampMinutes(entries[i].registered_at);
-    const end = timestampMinutes(entries[i + 1].registered_at);
+  for (let i = 0; i + 1 < ordered.length; i += 2) {
+    const start = timestampMinutes(ordered[i].registered_at);
+    const end = timestampMinutes(ordered[i + 1].registered_at);
     if (end >= start) total += end - start;
   }
   return total;

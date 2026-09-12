@@ -4,6 +4,7 @@ const m = vi.hoisted(() => ({
   gate: vi.fn(),
   socket: vi.fn(),
   send: vi.fn(),
+  onWhatsApp: vi.fn(),
   events: {} as Record<string, Function>,
   collect: vi.fn(),
   state: "PENDING",
@@ -56,10 +57,12 @@ beforeEach(() => {
       },
     },
     sendMessage: m.send,
+    onWhatsApp: m.onWhatsApp,
     end: () => {},
     logout: async () => {},
   }));
   m.send.mockResolvedValue({ key: { id: "message-1" } });
+  m.onWhatsApp.mockResolvedValue([{ exists: true, jid: "5511999999999@s.whatsapp.net" }]);
   m.query.mockImplementation(async (sql: string, args: any[]) => {
     if (sql.includes("SELECT a.*")) return [m.companies];
     if (sql.includes("SELECT encrypted_value")) return [[]];
@@ -79,7 +82,7 @@ beforeEach(() => {
       m.state = "SENDING";
       return [{ affectedRows: 1 }];
     }
-    if (sql.includes("SET status='SENT'")) m.state = "SENT";
+    if (sql.includes("SET status='SENT'") || sql.includes("SET status='ACCEPTED'")) m.state = "ACCEPTED";
     if (sql.includes("SET status='UNKNOWN',error_code='SEND_UNCONFIRMED'"))
       m.state = "UNKNOWN";
     return [{ affectedRows: 1 }];
@@ -160,4 +163,34 @@ it("não deixa um QR atrasado sobrescrever o estado conectado", async () => {
   await new Promise((resolve) => setTimeout(resolve, 10));
   expect(worker.whatsappStatus(7, 2).status).toBe("CONNECTED");
   expect(worker.whatsappStatus(7, 2).qr).toBeNull();
+});
+
+it("valida o destinatário no WhatsApp e envia para o JID resolvido", async () => {
+  m.onWhatsApp.mockResolvedValue([
+    { exists: true, jid: "123456789012345@lid" },
+  ]);
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ connection: "open" });
+  await worker.runWhatsAppTick();
+  expect(m.onWhatsApp).toHaveBeenCalledWith("5511999999999");
+  expect(m.send).toHaveBeenCalledWith(
+    "123456789012345@lid",
+    { text: "fixture only" },
+    { messageId: "message-1" },
+  );
+});
+
+it("não envia e registra destinatário inválido quando o número não existe no WhatsApp", async () => {
+  m.onWhatsApp.mockResolvedValue([]);
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ connection: "open" });
+  await worker.runWhatsAppTick();
+  expect(m.send).not.toHaveBeenCalled();
+  expect(
+    m.query.mock.calls.some(([sql, args]) =>
+      String(sql).includes("INVALID_RECIPIENT") && args?.includes(9),
+    ),
+  ).toBe(true);
 });

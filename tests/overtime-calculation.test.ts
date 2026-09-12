@@ -33,3 +33,14 @@ it("aguarda o fechamento do par sem inventar horas para marcação incompleta", 
     0,
   );
 });
+
+it("apura corretamente intervalo de saída e retorno no mesmo horário mesmo se vierem invertidos do banco", () => {
+  expect(
+    pairWorkedMinutes([
+      entry("CLOCK_IN", "2026-09-10 08:00:00"),
+      entry("BREAK_IN", "2026-09-10 13:00:00"),
+      entry("BREAK_OUT", "2026-09-10 13:00:00"),
+      entry("CLOCK_OUT", "2026-09-10 19:00:00"),
+    ]),
+  ).toBe(660);
+});

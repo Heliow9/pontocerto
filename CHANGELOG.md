@@ -33,3 +33,9 @@
 - Falha/indisponibilidade do Baileys não impede mais a criação de `overtime_alerts`.
 - O worker do WhatsApp fica responsável somente por sessão e envio das mensagens já enfileiradas.
 - Adicionado log explícito quando a apuração de horas extras falhar, facilitando diagnóstico no PM2.
+
+## 2026-09-12 - WhatsApp delivery hardening / cálculo determinístico
+- Valida o destinatário com `onWhatsApp()` antes do envio e usa o JID resolvido (inclusive LID quando retornado pelo Baileys).
+- Marca número inexistente como `CANCELED / INVALID_RECIPIENT` e falha transitória de consulta como `RECIPIENT_LOOKUP_FAILED`.
+- Separa aceitação (`ACCEPTED`) de entrega (`DELIVERED`) e marca `ACK_TIMEOUT` após 10 minutos sem confirmação, preservando ACK tardio.
+- Corrige cálculo quando `BREAK_OUT` e `BREAK_IN` têm o mesmo timestamp, ordenando semanticamente os tipos antes do pareamento.
