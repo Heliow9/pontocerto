@@ -11,6 +11,13 @@ import QRCode from "qrcode";
 import { createHash } from "node:crypto";
 import { pool } from "../db/pool.js";
 import { encryptSession, decryptSession } from "./whatsapp-crypto.js";
+import {
+  consolidateOvertimeAlertMessage,
+  receiptState,
+  retryDelaySeconds,
+  WHATSAPP_MAX_MESSAGES_PER_HOUR,
+  WHATSAPP_MIN_RECIPIENT_INTERVAL_SECONDS,
+} from "./whatsapp-delivery-rules.js";
 
 type Connection = {
   socket?: ReturnType<typeof makeWASocket>;
@@ -195,10 +202,31 @@ async function connect(tenant: number, company: number) {
       if (u.key.fromMe && u.key.id && Number(u.update.status) >= 3)
         void pool
           .query(
-            "UPDATE overtime_alerts SET status='DELIVERED' WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','ACCEPTED','UNKNOWN')",
+            "UPDATE overtime_alerts SET status='DELIVERED',error_code=NULL WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','ACCEPTED','UNKNOWN')",
             [tenant, company, u.key.id],
           )
           .catch(() => {});
+  });
+  socket.ev.on("message-receipt.update", (updates) => {
+    for (const update of updates) {
+      const messageId = update?.key?.id;
+      const state = receiptState(update?.receipt);
+      if (!messageId || !state) continue;
+      if (state === "READ")
+        void pool
+          .query(
+            "UPDATE overtime_alerts SET status='READ',error_code=NULL WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','ACCEPTED','UNKNOWN','DELIVERED')",
+            [tenant, company, messageId],
+          )
+          .catch(() => {});
+      else
+        void pool
+          .query(
+            "UPDATE overtime_alerts SET status='DELIVERED',error_code=NULL WHERE tenant_id=? AND company_id=? AND message_id=? AND status IN ('SENDING','SENT','ACCEPTED','UNKNOWN')",
+            [tenant, company, messageId],
+          )
+          .catch(() => {});
+    }
   });
 }
 export async function disconnectWhatsApp(tenant: number, company: number) {
@@ -280,7 +308,7 @@ export async function runWhatsAppTick() {
         .toISOString()
         .slice(0, 7);
       const [rows] = await pool.query<any[]>(
-        "SELECT * FROM overtime_alerts WHERE tenant_id=? AND company_id=? AND status='PENDING' AND month_key=? ORDER BY id LIMIT 1",
+        "SELECT * FROM overtime_alerts WHERE tenant_id=? AND company_id=? AND status='PENDING' AND month_key=? AND (next_attempt_at IS NULL OR next_attempt_at<=NOW()) ORDER BY id LIMIT 1",
         [company.tenant_id, company.company_id, month],
       );
       const alert = rows[0];
@@ -288,11 +316,65 @@ export async function runWhatsAppTick() {
       const recipients = JSON.parse(company.recipients || "[]");
       if (!recipients.some((r: any) => r.phone === alert.recipient)) {
         await pool.query(
-          "UPDATE overtime_alerts SET status='CANCELED' WHERE id=?",
+          "UPDATE overtime_alerts SET status='CANCELED',error_code='RECIPIENT_REMOVED' WHERE id=? AND status='PENDING'",
           [alert.id],
         );
         continue;
       }
+
+      const [pendingGroup] = await pool.query<any[]>(
+        `SELECT * FROM overtime_alerts
+         WHERE tenant_id=? AND company_id=? AND employee_id=? AND month_key=? AND recipient=?
+           AND status='PENDING' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW())
+         ORDER BY FIELD(threshold_key,'50','100','OVER'),id`,
+        [
+          company.tenant_id,
+          company.company_id,
+          alert.employee_id,
+          alert.month_key,
+          alert.recipient,
+        ],
+      );
+      if (!pendingGroup.length) continue;
+      const ids = pendingGroup.map((item: any) => Number(item.id));
+      const placeholders = ids.map(() => "?").join(",");
+
+      const [rateRows] = await pool.query<any[]>(
+        `SELECT MAX(sent_at) AS last_sent, COUNT(DISTINCT message_id) AS sent_count
+           FROM overtime_alerts
+          WHERE tenant_id=? AND company_id=? AND recipient=?
+            AND sent_at>=DATE_SUB(NOW(),INTERVAL 1 HOUR)
+            AND message_id IS NOT NULL
+            AND status IN ('ACCEPTED','DELIVERED','READ','UNKNOWN')`,
+        [company.tenant_id, company.company_id, alert.recipient],
+      );
+      const sentCount = Number(rateRows[0]?.sent_count || 0);
+      if (sentCount >= WHATSAPP_MAX_MESSAGES_PER_HOUR) {
+        await pool.query(
+          `UPDATE overtime_alerts
+              SET error_code='RATE_LIMITED',next_attempt_at=DATE_ADD(NOW(),INTERVAL 5 MINUTE)
+            WHERE id IN (${placeholders}) AND status='PENDING'`,
+          ids,
+        );
+        continue;
+      }
+      if (rateRows[0]?.last_sent) {
+        const lastSent = new Date(String(rateRows[0].last_sent).replace(" ", "T") + "-03:00").getTime();
+        const remaining =
+          WHATSAPP_MIN_RECIPIENT_INTERVAL_SECONDS * 1000 -
+          (Date.now() - lastSent);
+        if (remaining > 0) {
+          const waitSeconds = Math.max(1, Math.ceil(remaining / 1000));
+          await pool.query(
+            `UPDATE overtime_alerts
+                SET error_code='THROTTLED',next_attempt_at=DATE_ADD(NOW(),INTERVAL ? SECOND)
+              WHERE id IN (${placeholders}) AND status='PENDING'`,
+            [waitSeconds, ...ids],
+          );
+          continue;
+        }
+      }
+
       let resolvedJid: string | null = null;
       try {
         const lookup = await c.socket.onWhatsApp(alert.recipient);
@@ -301,39 +383,54 @@ export async function runWhatsAppTick() {
           : null;
         resolvedJid = match?.jid || null;
       } catch {
+        const delay = retryDelaySeconds(Number(alert.attempt_count || 0));
         await pool.query(
-          "UPDATE overtime_alerts SET error_code='RECIPIENT_LOOKUP_FAILED' WHERE id=? AND status='PENDING'",
-          [alert.id],
+          `UPDATE overtime_alerts
+              SET error_code='RECIPIENT_LOOKUP_FAILED',attempt_count=attempt_count+1,
+                  next_attempt_at=DATE_ADD(NOW(),INTERVAL ? SECOND)
+            WHERE id IN (${placeholders}) AND status='PENDING'`,
+          [delay, ...ids],
         );
         continue;
       }
       if (!resolvedJid) {
         await pool.query(
-          "UPDATE overtime_alerts SET status='CANCELED',error_code='INVALID_RECIPIENT' WHERE id=? AND status='PENDING'",
-          [alert.id],
+          `UPDATE overtime_alerts
+              SET status='CANCELED',error_code='INVALID_RECIPIENT',next_attempt_at=NULL
+            WHERE id IN (${placeholders}) AND status='PENDING'`,
+          ids,
         );
         continue;
       }
+
+      const messageText = consolidateOvertimeAlertMessage(pendingGroup);
       const messageId = generateMessageIDV2(c.socket.user?.id);
       const [claim] = await pool.query<any>(
-        "UPDATE overtime_alerts SET status='SENDING',message_id=?,error_code=NULL WHERE id=? AND status='PENDING'",
-        [messageId, alert.id],
+        `UPDATE overtime_alerts
+            SET status='SENDING',message_id=?,error_code=NULL,next_attempt_at=NULL,attempt_count=attempt_count+1
+          WHERE id IN (${placeholders}) AND status='PENDING'`,
+        [messageId, ...ids],
       );
-      if (!claim.affectedRows) continue;
+      if (Number(claim.affectedRows) !== ids.length) continue;
       try {
         const result = await c.socket.sendMessage(
           resolvedJid,
-          { text: alert.message_text },
+          { text: messageText },
           { messageId },
         );
+        const acceptedId = result?.key.id || messageId;
         await pool.query(
-          "UPDATE overtime_alerts SET status='ACCEPTED',message_id=?,sent_at=NOW(),error_code=NULL WHERE id=? AND status='SENDING'",
-          [result?.key.id || messageId, alert.id],
+          `UPDATE overtime_alerts
+              SET status='ACCEPTED',message_id=?,sent_at=NOW(),error_code=NULL,next_attempt_at=NULL
+            WHERE id IN (${placeholders}) AND status='SENDING'`,
+          [acceptedId, ...ids],
         );
       } catch {
         await pool.query(
-          "UPDATE overtime_alerts SET status='UNKNOWN',error_code='SEND_UNCONFIRMED' WHERE id=? AND status='SENDING'",
-          [alert.id],
+          `UPDATE overtime_alerts
+              SET status='UNKNOWN',error_code='SEND_UNCONFIRMED',next_attempt_at=NULL
+            WHERE id IN (${placeholders}) AND status='SENDING'`,
+          ids,
         );
       }
     }

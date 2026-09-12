@@ -39,3 +39,14 @@
 - Marca número inexistente como `CANCELED / INVALID_RECIPIENT` e falha transitória de consulta como `RECIPIENT_LOOKUP_FAILED`.
 - Separa aceitação (`ACCEPTED`) de entrega (`DELIVERED`) e marca `ACK_TIMEOUT` após 10 minutos sem confirmação, preservando ACK tardio.
 - Corrige cálculo quando `BREAK_OUT` e `BREAK_IN` têm o mesmo timestamp, ordenando semanticamente os tipos antes do pareamento.
+
+## 2026-09-12 — WhatsApp V5: recibos, consolidação e controle de fluxo
+
+- Recibos do Baileys agora também usam `message-receipt.update` para distinguir `DELIVERED` e `READ`.
+- Marcos 50%, 100% e OVER pendentes ao mesmo tempo para o mesmo funcionário/destinatário são enviados em uma única mensagem consolidada.
+- Cada marco continua gravado separadamente em `overtime_alerts`, compartilhando o mesmo `message_id` quando consolidado.
+- Intervalo mínimo de 30 segundos entre mensagens destinadas ao mesmo número.
+- Limite conservador de 10 mensagens por hora por destinatário; excedentes permanecem na fila com `RATE_LIMITED`.
+- Falhas temporárias de consulta do destinatário usam backoff de 30s, 2min, 5min e 15min.
+- O painel diferencia Aceito, Entregue e Lida e informa retenção por limite/intervalo.
+- Migração `014_whatsapp_delivery_controls.sql` adiciona `next_attempt_at`, `attempt_count` e índices para a fila.

@@ -26,6 +26,7 @@ const labels: Record<string, string> = {
   SENT: "Aceito pelo WhatsApp",
   ACCEPTED: "Aceito pelo WhatsApp",
   DELIVERED: "Entregue",
+  READ: "Lida",
   UNKNOWN: "Envio não confirmado",
   CANCELED: "Cancelado",
   EXPIRED: "Competência encerrada",
@@ -332,10 +333,12 @@ export function CompanyAutomation({ id }: { id: number }) {
           </div>
           <h4>Últimos alertas</h4>
           <p>
-            “Aceito pelo WhatsApp” indica que o envio foi aceito pelo serviço,
-            mas ainda não houve confirmação de entrega. “Entregue” depende do
-            ACK do WhatsApp. Destinatários inválidos e timeouts ficam
-            identificados para diagnóstico.
+            O worker verifica a fila a cada 5 segundos. Para evitar rajadas,
+            marcos simultâneos são consolidados em uma única mensagem por
+            funcionário e destinatário, com intervalo mínimo de 30 segundos
+            entre mensagens para o mesmo número e limite de 10 envios por hora.
+            “Aceito pelo WhatsApp” ainda aguarda recibo; “Entregue” e “Lida”
+            usam os recibos recebidos do WhatsApp.
           </p>
           {alerts.length === 0 ? (
             <p>Nenhum alerta registrado.</p>
@@ -349,9 +352,18 @@ export function CompanyAutomation({ id }: { id: number }) {
                       ? "Ultrapassou"
                       : `${a.threshold_key}%`}{" "}
                     · {labels[a.status] || a.status}
-                    {a.error_code ? ` · ${a.error_code}` : ""}
+                    {a.error_code === "RATE_LIMITED"
+                      ? " · Retida por limite"
+                      : a.error_code === "THROTTLED"
+                        ? " · Aguardando intervalo"
+                        : a.error_code
+                          ? ` · ${a.error_code}`
+                          : ""}
                   </summary>
                   <p style={{ whiteSpace: "pre-wrap" }}>{a.message_text}</p>
+                  {a.next_attempt_at && a.status === "PENDING" && (
+                    <small>Próxima tentativa: {String(a.next_attempt_at)}</small>
+                  )}
                 </details>
               ))}
             </div>

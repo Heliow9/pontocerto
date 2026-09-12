@@ -194,3 +194,30 @@ it("não envia e registra destinatário inválido quando o número não existe n
     ),
   ).toBe(true);
 });
+
+it("marca a mensagem como entregue e depois lida pelos recibos do WhatsApp", async () => {
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ connection: "open" });
+  await worker.runWhatsAppTick();
+
+  m.events["message-receipt.update"]([
+    { key: { id: "message-1" }, receipt: { receiptTimestamp: 123 } },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(
+    m.query.mock.calls.some(([sql, args]) =>
+      String(sql).includes("status='DELIVERED'") && args?.includes("message-1"),
+    ),
+  ).toBe(true);
+
+  m.events["message-receipt.update"]([
+    { key: { id: "message-1" }, receipt: { readTimestamp: 456 } },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(
+    m.query.mock.calls.some(([sql, args]) =>
+      String(sql).includes("status='READ'") && args?.includes("message-1"),
+    ),
+  ).toBe(true);
+});

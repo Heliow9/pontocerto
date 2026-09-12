@@ -75,7 +75,7 @@ export async function collectOvertimeAlerts() {
         const message = `PontoCerto — Horas extras\nEmpresa: ${company.legal_name}\nFuncionário: ${row.name}\nGrupo: ${row.group_name || "Sem grupo"}\nCompetência: ${month}\nAcumulado: ${hoursText(minutes)} de ${hoursText(reference!)} (${Math.floor((minutes / reference!) * 100)}%)\n${threshold === "OVER" ? "Referência ultrapassada" : `Marco de ${threshold}% atingido`}. O registro de ponto permanece liberado.`;
         for (const recipient of recipients)
           await pool.query(
-            `INSERT INTO overtime_alerts(tenant_id,company_id,employee_id,month_key,threshold_key,recipient,message_text) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE message_text=IF(status IN ('PENDING','CANCELED'),VALUES(message_text),message_text),status=IF(status='CANCELED','PENDING',status)`,
+            `INSERT INTO overtime_alerts(tenant_id,company_id,employee_id,month_key,threshold_key,recipient,message_text) VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE message_text=IF(status IN ('PENDING','CANCELED'),VALUES(message_text),message_text),status=IF(status='CANCELED','PENDING',status),next_attempt_at=IF(status='CANCELED',NULL,next_attempt_at),error_code=IF(status='CANCELED',NULL,error_code)`,
             [
               company.tenant_id,
               company.company_id,

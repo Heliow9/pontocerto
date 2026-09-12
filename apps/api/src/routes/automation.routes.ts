@@ -75,7 +75,7 @@ automationRouter.get(
     );
     const s = rows[0];
     const [alerts] = await pool.query<any[]>(
-      "SELECT id,employee_id,month_key,threshold_key,recipient,status,error_code,created_at,sent_at,message_text FROM overtime_alerts WHERE tenant_id=? AND company_id=? ORDER BY id DESC LIMIT 100",
+      "SELECT id,employee_id,month_key,threshold_key,recipient,status,error_code,next_attempt_at,attempt_count,created_at,sent_at,message_id,message_text FROM overtime_alerts WHERE tenant_id=? AND company_id=? ORDER BY id DESC LIMIT 100",
       [req.auth!.tenantId, id],
     );
     res.json({
