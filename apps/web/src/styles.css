@@ -1376,3 +1376,12 @@ th {
 .payroll-employees td:last-child { min-width: 170px; }
 .payroll-employees input:not([type="checkbox"]) { width: 100%; max-width: 220px; padding: 10px 12px; border: 1px solid #dce4ee; border-radius: 8px; font: inherit; }
 .payroll-file { overflow: auto; padding: 14px; background: #f3f6fa; white-space: pre; max-height: 320px; }
+.company-automation { display: grid; gap: 14px; padding: 20px; border: 1px solid #cde3e1; border-radius: 16px; background: #f8fcfb; }
+.company-automation h3, .company-automation h4, .company-automation p { margin: 0; }
+.company-automation h4 { margin-top: 12px; }
+.company-automation > label { display: flex; flex-direction: column; gap: 8px; }
+.company-automation > label:has(input[type="checkbox"]) { display: flex; flex-direction: row; align-items: flex-start; gap: 10px; padding: 12px; border-radius: 10px; background: white; font-weight: 600; }
+.company-automation input[type="checkbox"] { flex: 0 0 18px; width: 18px; height: 18px; margin-top: 3px; }
+.company-automation .form-grid label { display: flex; flex-direction: column; gap: 6px; }
+.company-automation > button { justify-self: start; max-width: 100%; }
+.company-automation details { background: white; padding: 12px; margin-bottom: 8px; border-radius: 8px; }

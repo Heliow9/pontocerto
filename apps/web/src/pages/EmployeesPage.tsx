@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Company, Employee, Schedule, WorkLocation } from "../types";
 import { Modal } from "../components/Modal";
+import { OvertimeReference } from "../components/OvertimeReference";
 import { Badge, Empty, PageHeader } from "../components/Ui";
 import { apiMessage, brDate } from "../utils";
 
@@ -795,6 +796,7 @@ export function EmployeesPage({
               </div>
             </AsyncForm>
           )}
+          {editing && <OvertimeReference key={editing.id} kind="employee" id={editing.id} />}
         </Modal>
       )}
     </>

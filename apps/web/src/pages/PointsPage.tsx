@@ -256,6 +256,7 @@ export function PointsPage({
                       <Badge tone={i.source === "MANUAL" ? "warning" : "info"}>
                         {i.source}
                       </Badge>
+                      {i.remote_entry_id && <div className="muted">Remoto · {i.was_offline?"envio posterior":"online"}<br/>Horário do aparelho{i.synced_at&&<> · Recebido em {brDateTime(i.synced_at)}</>}</div>}
                     </td>
                     {securityDetails && (
                       <>

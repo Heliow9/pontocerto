@@ -91,6 +91,9 @@ export type TimeEntry = {
   scheduled_work_date?: string | null;
   schedule_text?: string | null;
   has_selfie?: number | null;
+  remote_entry_id?: number | null;
+  was_offline?: number;
+  synced_at?: string;
 };
 export type WorkLocation = {
   id: number;

@@ -1,4 +1,6 @@
 import { notificationsRouter } from "./routes/notifications.routes.js";
+import { automationRouter } from "./routes/automation.routes.js";
+import { remotePunchRouter } from "./routes/remote-punch.routes.js";
 import { groupsRouter } from "./routes/groups.routes.js";
 import { adjustmentsRouter } from "./routes/adjustments.routes.js";
 import express from "express";
@@ -23,6 +25,8 @@ import { devicesRouter } from "./routes/devices.routes.js";
 export const app = express();
 app.use(cors({origin(origin,callback){const allowed=env.CORS_ORIGINS.split(",").map(x=>x.trim());if(!origin||allowed.includes(origin))return callback(null,true);callback(new Error("Origin não permitida pelo CORS."));},credentials:true}));
 app.use(express.json({limit:"3mb"}));
+app.use("/automation",automationRouter);
+app.use("/remote-punch",remotePunchRouter);
 app.get("/",(_req,res)=>res.json({name:"Ponto Certo SaaS API",version:"0.4.4",multiTenant:true,security:"SELFIE+DEVICE_BIOMETRIC+GEOFENCE+SCHEDULE"}));
 app.use("/adjustments",adjustmentsRouter);app.use("/health",healthRouter);app.use("/auth",authRouter);app.use("/dashboard",dashboardRouter);app.use("/companies",companiesRouter);app.use("/employees",employeesRouter);app.use("/groups",groupsRouter);app.use("/notifications",notificationsRouter);app.use("/schedules",schedulesRouter);app.use("/time-entries",timeEntriesRouter);app.use("/holidays",holidaysRouter);app.use("/absences",absencesRouter);app.use("/calculations",calculationsRouter);app.use("/reports",reportsRouter);app.use("/settings",settingsRouter);app.use("/saas",saasRouter);app.use("/locations",locationsRouter);app.use("/devices",devicesRouter);
 app.use((err:any,_req:express.Request,res:express.Response,_next:express.NextFunction)=>{console.error(err);res.status(500).json({message:"Erro interno do servidor.",detail:env.NODE_ENV==="development"?err?.message:undefined});});

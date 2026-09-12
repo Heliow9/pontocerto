@@ -1,4 +1,12 @@
 import { test, expect, Page } from "@playwright/test";
+test.use({
+  launchOptions: {
+    args: [
+      "--use-fake-device-for-media-stream",
+      "--use-fake-ui-for-media-stream",
+    ],
+  },
+});
 const user = {
   name: "Maria Silva",
   email: "maria@example.test",
@@ -35,6 +43,19 @@ async function mock(page: Page, role = "TENANT_ADMIN") {
     if (["127.0.0.1:5173", "127.0.0.1:4174"].includes(url.host))
       return route.continue();
     const p = url.pathname.replace(/^\/api/, "");
+    if (p.startsWith("/automation/limits/"))
+      return route.fulfill({ json: { minutes: null, inheritedMinutes: null } });
+    if (p.startsWith("/automation/companies/"))
+      return route.fulfill({
+        json: {
+          overtimeEnabled: false,
+          remoteEnabled: false,
+          offlineEnabled: false,
+          recipients: [],
+          whatsapp: { ready: false, status: "DISCONNECTED" },
+          alerts: [],
+        },
+      });
     const responses: Record<string, unknown> = {
       "/auth/me": { ...user, role },
       "/auth/login": {
@@ -42,6 +63,7 @@ async function mock(page: Page, role = "TENANT_ADMIN") {
         user: { ...user, role, employeeId: 1 },
       },
       "/employees": [employee],
+      "/remote-punch/policy": { enabled: false, offlineEnabled: false },
       "/groups": [],
       "/notifications/settings": {
         webReady: true,
@@ -119,6 +141,132 @@ async function admin(page: Page, hash = "dashboard", role = "TENANT_ADMIN") {
   );
   await page.goto(`/#${hash}`);
 }
+
+test("empresa salva ponto remoto e destinatários sem conectar WhatsApp automaticamente", async ({
+  page,
+}) => {
+  await admin(page, "companies");
+  let sent: any = null;
+  await page.route("**/automation/companies/1", (route) => {
+    if (route.request().method() === "PUT") {
+      sent = route.request().postDataJSON();
+      return route.fulfill({ json: { ok: true } });
+    }
+    return route.fulfill({
+      json: {
+        overtimeEnabled: false,
+        remoteEnabled: false,
+        offlineEnabled: false,
+        recipients: [],
+        whatsapp: { ready: true, status: "DISCONNECTED" },
+        alerts: [],
+      },
+    });
+  });
+  await page
+    .getByRole("button", { name: "Editar", exact: true })
+    .first()
+    .click();
+  await page
+    .getByLabel("Ativar acompanhamento mensal e alertas de horas extras")
+    .check();
+  await page.getByLabel(/Permitir ponto de qualquer lugar/).check();
+  await page.getByLabel(/Permitir capturar offline/).check();
+  await page.getByRole("button", { name: "Adicionar destinatário" }).click();
+  await page.getByLabel("Nome do destinatário").fill("RH teste");
+  await page.getByLabel("Telefone com DDI e DDD").fill("5511999999999");
+  await page
+    .getByRole("button", { name: "Salvar automação da empresa" })
+    .click();
+  await expect(
+    page.getByText("Configurações salvas.", { exact: true }),
+  ).toBeVisible();
+  expect(sent).toEqual({
+    overtimeEnabled: true,
+    remoteEnabled: true,
+    offlineEnabled: true,
+    recipients: [{ name: "RH teste", phone: "5511999999999" }],
+  });
+  await page
+    .getByRole("heading", { name: "Horas extras, WhatsApp e ponto remoto" })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "test-results/company-automation.png" });
+});
+
+test.describe("ponto remoto com câmera de teste", () => {
+  test("PWA preserva selfie e horário offline e sincroniza após reabrir", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mock(page, "FUNCIONARIO");
+    let offline = false,
+      sent: any = null;
+    await page.route("**/remote-punch/policy", (route) =>
+      offline
+        ? route.abort("internetdisconnected")
+        : route.fulfill({
+            json: {
+              enabled: true,
+              offlineEnabled: true,
+              companyId: 1,
+              device: {
+                requireDeviceBiometric: false,
+                requireRegisteredDevice: false,
+              },
+            },
+          }),
+    );
+    await page.route("**/remote-punch", (route) => {
+      if (offline) return route.abort("internetdisconnected");
+      sent = route.request().postDataJSON();
+      return route.fulfill({
+        status: 201,
+        json: {
+          id: 909,
+          registered_at: "2026-09-12 07:00:00",
+          entry_type: "CLOCK_IN",
+        },
+      });
+    });
+    await page.goto("http://127.0.0.1:4174");
+    await page.getByLabel("E-mail", { exact: true }).fill("maria@example.test");
+    await page.getByLabel("Senha", { exact: true }).fill("test-password");
+    await page.getByRole("button", { name: "Entrar", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Registrar ponto remoto" }),
+    ).toBeVisible();
+    offline = true;
+    await page.getByRole("button", { name: "Registrar ponto remoto" }).click();
+    await page.getByRole("button", { name: "Capturar selfie remota" }).click();
+    await page
+      .getByRole("button", { name: "Confirmar marcação remota" })
+      .click();
+    await expect(
+      page.getByText("1 marcação(ões) aguardando confirmação", { exact: true }),
+    ).toBeVisible();
+    const saved = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]"),
+    );
+    expect(saved).toHaveLength(1);
+    expect(saved[0].selfie.length).toBeGreaterThan(100);
+    expect(saved[0].offline).toBe(true);
+    await page.reload();
+    await expect(
+      page.getByText("1 marcação(ões) aguardando confirmação", { exact: true }),
+    ).toBeVisible();
+    await page.screenshot({ path: "test-results/remote-offline.png" });
+    offline = false;
+    await page.getByRole("button", { name: "Sincronizar marcações" }).click();
+    await expect(page.getByText(/Comprovante #909/)).toBeVisible();
+    expect(sent.requestKey).toBe(saved[0].requestKey);
+    expect(sent.capturedAt).toBe(saved[0].capturedAt);
+    expect(
+      await page.evaluate(() =>
+        JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]"),
+      ),
+    ).toEqual([]);
+  });
+});
 test("busca de funções navega e pode ser fechada sem aviso de alterações", async ({
   page,
 }) => {
@@ -142,6 +290,134 @@ test("busca de funções navega e pode ser fechada sem aviso de alterações", a
   await expect(
     page.getByRole("heading", { name: "Alterar senha", exact: true }),
   ).toBeVisible();
+});
+
+async function seedRemoteQueue(page: Page, items: any[]) {
+  await mock(page, "FUNCIONARIO");
+  await page.route("**/remote-punch/policy", (route) =>
+    route.fulfill({
+      json: {
+        enabled: true,
+        offlineEnabled: true,
+        device: {
+          requireDeviceBiometric: false,
+          requireRegisteredDevice: false,
+        },
+      },
+    }),
+  );
+  await page.addInitScript((items) => {
+    localStorage.setItem("pc_token", "test-token");
+    localStorage.setItem("pc_remote_queue_1", JSON.stringify(items));
+  }, items);
+}
+const queueFixture = (key: string) => ({
+  requestKey: key,
+  type: "CLOCK_IN",
+  capturedAt: new Date().toISOString(),
+  offline: true,
+  source: "WEB",
+  selfie: "fixture-photo",
+  deviceUid: null,
+});
+test("sincronizar preserva a marcação adicionada por outra aba durante o envio", async ({
+  page,
+  context,
+}) => {
+  const first = queueFixture("first-remote-request"),
+    second = queueFixture("second-remote-request");
+  await seedRemoteQueue(page, [first]);
+  let started = false,
+    release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/remote-punch", async (route) => {
+    started = true;
+    await gate;
+    await route.fulfill({ json: { id: 910 } });
+  });
+  await page.goto("http://127.0.0.1:4174");
+  await expect.poll(() => started).toBe(true);
+  const other = await context.newPage();
+  await other.route("http://127.0.0.1:4174/", (route) =>
+    route.fulfill({ contentType: "text/html", body: "<html></html>" }),
+  );
+  await other.goto("http://127.0.0.1:4174/");
+  await other.evaluate((second) => {
+    const q = JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]");
+    localStorage.setItem("pc_remote_queue_1", JSON.stringify([...q, second]));
+  }, second);
+  release();
+  await expect(page.getByText(/Comprovante #910/)).toBeVisible();
+  expect(
+    await other.evaluate(() =>
+      JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]"),
+    ),
+  ).toEqual([second]);
+  await other.close();
+});
+test("tentativa rejeitada não bloqueia outras e só é descartada com confirmação", async ({
+  page,
+}) => {
+  const first = queueFixture("invalid-remote-request"),
+    second = queueFixture("valid-remote-request");
+  await seedRemoteQueue(page, [first, second]);
+  await page.route("**/remote-punch", (route) =>
+    route.request().postDataJSON().requestKey === first.requestKey
+      ? route.fulfill({
+          status: 422,
+          json: { message: "Horário antigo. Solicite ajuste ao RH." },
+        })
+      : route.fulfill({ json: { id: 911 } }),
+  );
+  await page.goto("http://127.0.0.1:4174");
+  await expect(page.getByText(/Comprovante #911/)).toBeVisible();
+  const q = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]"),
+  );
+  expect(q).toHaveLength(1);
+  expect(q[0].requestKey).toBe(first.requestKey);
+  await page
+    .getByRole("button", { name: "Descartar tentativa rejeitada" })
+    .click();
+  await expect(
+    page.getByText(/Remova somente após o RH resolver/),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Manter tentativa" }).click();
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]").length,
+    ),
+  ).toBe(1);
+  await page
+    .getByRole("button", { name: "Descartar tentativa rejeitada" })
+    .click();
+  await page.getByRole("button", { name: "Descartar definitivamente" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]").length,
+      ),
+    )
+    .toBe(0);
+});
+test("falha temporária permite nova sincronização automática", async ({ page }) => {
+  await seedRemoteQueue(page, [queueFixture("transient-remote-request")]);
+  let attempts = 0;
+  await page.route("**/remote-punch", (route) =>
+    ++attempts === 1
+      ? route.fulfill({ status: 409, json: { message: "Tente novamente." } })
+      : route.fulfill({ json: { id: 912 } }),
+  );
+  await page.goto("http://127.0.0.1:4174");
+  await expect.poll(() => page.evaluate(() =>
+    JSON.parse(localStorage.getItem("pc_remote_queue_1") || "[]")[0]?.error,
+  )).toBeTruthy();
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await expect(page.getByText(/Comprovante #912/)).toBeVisible();
 });
 test("busca da equipe filtra imediatamente e permite limpar", async ({
   page,

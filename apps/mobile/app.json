@@ -53,7 +53,7 @@
     ],
     "android": {
       "package": "com.pontocerto.app",
-      "versionCode": 10,
+      "versionCode": 11,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -64,7 +64,7 @@
       "config": {
         "usesNonExemptEncryption": false
       },
-      "buildNumber": "10",
+      "buildNumber": "11",
       "infoPlist": {
         "NSFaceIDUsageDescription": "O Ponto Certo usa o Face ID para confirmar a biometria do aparelho antes do registro de ponto.",
         "NSLocationWhenInUseUsageDescription": "O Ponto Certo usa sua localização durante o registro de ponto para validar o local de trabalho.",

@@ -1,0 +1,120 @@
+import { beforeEach, afterEach, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({
+  query: vi.fn(),
+  gate: vi.fn(),
+  socket: vi.fn(),
+  send: vi.fn(),
+  events: {} as Record<string, Function>,
+  collect: vi.fn(),
+  state: "PENDING",
+  companies: [] as any[],
+}));
+vi.mock("../apps/api/src/db/pool.js", () => ({
+  pool: {
+    query: m.query,
+    getConnection: async () => ({
+      query: m.gate,
+      ping: async () => {},
+      on: () => {},
+      release: () => {},
+    }),
+  },
+}));
+vi.mock("../apps/api/src/services/overtime.service.js", () => ({
+  collectOvertimeAlerts: m.collect,
+}));
+vi.mock("@whiskeysockets/baileys", () => ({
+  default: m.socket,
+  BufferJSON: {
+    replacer: (_k: string, v: any) => v,
+    reviver: (_k: string, v: any) => v,
+  },
+  DisconnectReason: { loggedOut: 401 },
+  initAuthCreds: () => ({ registered: false }),
+  generateMessageIDV2: () => "message-1",
+  proto: { Message: { AppStateSyncKeyData: { fromObject: (v: any) => v } } },
+}));
+beforeEach(() => {
+  vi.resetModules();
+  vi.resetAllMocks();
+  vi.stubEnv("WHATSAPP_ENCRYPTION_KEY", "a".repeat(64));
+  m.events = {};
+  m.state = "PENDING";
+  m.companies = [
+    {
+      tenant_id: 7,
+      company_id: 2,
+      recipients: JSON.stringify([{ name: "RH", phone: "5511999999999" }]),
+    },
+  ];
+  m.gate.mockResolvedValue([[{ acquired: 1 }]]);
+  m.socket.mockImplementation(() => ({
+    user: { id: "5511888888888:1@s.whatsapp.net" },
+    ev: {
+      on: (name: string, fn: Function) => {
+        m.events[name] = fn;
+      },
+    },
+    sendMessage: m.send,
+    end: () => {},
+    logout: async () => {},
+  }));
+  m.send.mockResolvedValue({ key: { id: "message-1" } });
+  m.query.mockImplementation(async (sql: string, args: any[]) => {
+    if (sql.includes("SELECT a.*")) return [m.companies];
+    if (sql.includes("SELECT encrypted_value")) return [[]];
+    if (sql.includes("SELECT * FROM overtime_alerts"))
+      return [
+        m.state === "PENDING"
+          ? [
+              {
+                id: 9,
+                recipient: "5511999999999",
+                message_text: "fixture only",
+              },
+            ]
+          : [],
+      ];
+    if (sql.includes("SET status='SENDING'")) {
+      m.state = "SENDING";
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.includes("SET status='SENT'")) m.state = "SENT";
+    if (sql.includes("SET status='UNKNOWN',error_code='SEND_UNCONFIRMED'"))
+      m.state = "UNKNOWN";
+    return [{ affectedRows: 1 }];
+  });
+});
+afterEach(() => vi.unstubAllEnvs());
+it("envia pela sessão correta e não repete o alerta depois da confirmação", async () => {
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ connection: "open" });
+  await worker.runWhatsAppTick();
+  await worker.runWhatsAppTick();
+  expect(m.send).toHaveBeenCalledTimes(1);
+  expect(m.send).toHaveBeenCalledWith(
+    "5511999999999@s.whatsapp.net",
+    { text: "fixture only" },
+    { messageId: "message-1" },
+  );
+  expect(worker.whatsappStatus(7, 2).status).toBe("CONNECTED");
+  expect(worker.whatsappStatus(8, 2).status).toBe("DISCONNECTED");
+});
+it("não repete automaticamente uma entrega cujo resultado é incerto", async () => {
+  m.send.mockRejectedValue(new Error("network after submission"));
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ connection: "open" });
+  await worker.runWhatsAppTick();
+  await worker.runWhatsAppTick();
+  expect(m.state).toBe("UNKNOWN");
+  expect(m.send).toHaveBeenCalledTimes(1);
+});
+it("não conecta outra instância quando o lock do serviço pertence a outro processo", async () => {
+  m.gate.mockResolvedValue([[{ acquired: 0 }]]);
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  expect(m.socket).not.toHaveBeenCalled();
+  expect(m.send).not.toHaveBeenCalled();
+});

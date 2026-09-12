@@ -1,4 +1,5 @@
 import { ReminderSettings } from "../src/ReminderSettings";
+import { RemoteClock } from "../src/RemoteClock";
 import {
   disableReminders,
   listenToReminders,
@@ -53,6 +54,9 @@ type Entry = {
   source: string;
   manually_adjusted: number;
   has_selfie?: number | null;
+  remote_entry_id?: number | null;
+  was_offline?: number;
+  synced_at?: string;
   device_biometric_verified?: number | null;
   device_biometric_type?: string | null;
   geo_decision?: string | null;
@@ -369,7 +373,7 @@ export default function App() {
     };
     const offline = () => {
       setSyncError(
-        "Sem conexão. Você pode consultar os registros salvos; conecte-se para confirmar um novo ponto.",
+        "Sem conexão. Consulte os registros salvos. Se sua empresa habilitou, use Ponto de qualquer lugar para salvar uma marcação e enviar depois.",
       );
     };
     document.addEventListener("visibilitychange", resume);
@@ -1334,6 +1338,7 @@ export default function App() {
               Boolean(adjustment)
             }
           />
+          <RemoteClock employeeId={Number(user.employee_id)} onSynced={()=>void refresh()} />
           {receipt && (
             <View style={s.receipt} accessibilityLiveRegion="polite">
               <Text accessibilityRole="header" style={s.cardTitle}>
@@ -2074,7 +2079,9 @@ export default function App() {
                 <Info
                   label="Origem"
                   value={
-                    detail.manually_adjusted
+                    detail.remote_entry_id
+                      ? `Remoto ${detail.was_offline ? "com envio posterior" : "online"} · horário do aparelho`
+                      : detail.manually_adjusted
                       ? "Ajuste identificado pelo RH"
                       : detail.source === "WEB"
                         ? "Navegador"

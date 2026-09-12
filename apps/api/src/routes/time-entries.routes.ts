@@ -681,11 +681,12 @@ timeEntriesRouter.get("/my/today", async (req, res) => {
     `SELECT te.id,te.entry_type,te.registered_at,te.latitude,te.longitude,te.accuracy,te.source,
             te.manually_adjusted,te.device_biometric_verified,te.device_biometric_type,te.device_id,
             te.schedule_decision,te.scheduled_work_date,gc.decision AS geo_decision,gc.distance_meters,
-            sc.schedule_text,CASE WHEN sf.id IS NULL THEN 0 ELSE 1 END AS has_selfie
+            sc.schedule_text,rp.time_entry_id AS remote_entry_id,rp.was_offline,rp.received_at AS synced_at,CASE WHEN sf.id IS NULL THEN 0 ELSE 1 END AS has_selfie
        FROM time_entries te
        LEFT JOIN time_entry_geo_checks gc ON gc.time_entry_id=te.id AND gc.tenant_id=te.tenant_id
        LEFT JOIN time_entry_schedule_checks sc ON sc.time_entry_id=te.id AND sc.tenant_id=te.tenant_id
        LEFT JOIN time_entry_selfies sf ON sf.time_entry_id=te.id AND sf.tenant_id=te.tenant_id
+       LEFT JOIN remote_punches rp ON rp.time_entry_id=te.id AND rp.tenant_id=te.tenant_id
       WHERE te.tenant_id=? AND te.employee_id=? AND DATE(te.registered_at)=${BRASILIA_DATE_SQL}
       ORDER BY te.registered_at`,
     [req.auth!.tenantId, req.auth!.employeeId],
@@ -703,11 +704,12 @@ timeEntriesRouter.get("/my/history", async (req, res) => {
     `SELECT te.id,te.entry_type,te.registered_at,te.latitude,te.longitude,te.source,te.manually_adjusted,
             te.device_biometric_verified,te.device_biometric_type,te.device_id,te.schedule_decision,
             te.scheduled_work_date,gc.decision AS geo_decision,gc.distance_meters,sc.schedule_text,
-            CASE WHEN sf.id IS NULL THEN 0 ELSE 1 END AS has_selfie
+            rp.time_entry_id AS remote_entry_id,rp.was_offline,rp.received_at AS synced_at,CASE WHEN sf.id IS NULL THEN 0 ELSE 1 END AS has_selfie
        FROM time_entries te
        LEFT JOIN time_entry_geo_checks gc ON gc.time_entry_id=te.id AND gc.tenant_id=te.tenant_id
        LEFT JOIN time_entry_schedule_checks sc ON sc.time_entry_id=te.id AND sc.tenant_id=te.tenant_id
        LEFT JOIN time_entry_selfies sf ON sf.time_entry_id=te.id AND sf.tenant_id=te.tenant_id
+       LEFT JOIN remote_punches rp ON rp.time_entry_id=te.id AND rp.tenant_id=te.tenant_id
       WHERE te.tenant_id=? AND te.employee_id=?
         AND te.registered_at>=DATE_SUB(${BRASILIA_NOW_SQL},INTERVAL ? DAY)
       ORDER BY te.registered_at DESC`,
@@ -745,7 +747,7 @@ timeEntriesRouter.get(
             gc.decision AS geo_decision,gc.distance_meters,gc.within_radius,
             COALESCE(wl.name,IF(gc.work_location_id IS NULL AND gc.id IS NOT NULL,'Endereço padrão da empresa',NULL)) AS geo_location_name,
             dc.decision AS device_decision,d.model AS device_model,d.manufacturer AS device_manufacturer,
-            sc.schedule_text,CASE WHEN sf.id IS NULL THEN 0 ELSE 1 END AS has_selfie
+            sc.schedule_text,rp.time_entry_id AS remote_entry_id,rp.was_offline,rp.received_at AS synced_at,CASE WHEN sf.id IS NULL THEN 0 ELSE 1 END AS has_selfie
        FROM time_entries te
        JOIN employees e ON e.id=te.employee_id AND e.tenant_id=te.tenant_id
        LEFT JOIN time_entry_geo_checks gc ON gc.time_entry_id=te.id AND gc.tenant_id=te.tenant_id
@@ -754,6 +756,7 @@ timeEntriesRouter.get(
        LEFT JOIN devices d ON d.id=dc.device_id AND d.tenant_id=dc.tenant_id
        LEFT JOIN time_entry_schedule_checks sc ON sc.time_entry_id=te.id AND sc.tenant_id=te.tenant_id
        LEFT JOIN time_entry_selfies sf ON sf.time_entry_id=te.id AND sf.tenant_id=te.tenant_id
+       LEFT JOIN remote_punches rp ON rp.time_entry_id=te.id AND rp.tenant_id=te.tenant_id
       WHERE te.tenant_id=? ${clauses.length ? "AND " + clauses.join(" AND ") : ""}
       ORDER BY te.registered_at DESC LIMIT 2000`,
       params,

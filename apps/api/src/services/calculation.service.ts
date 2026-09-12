@@ -31,6 +31,8 @@ type TimeEntryRow = {
   employee_id: number;
   registered_at: string;
   manually_adjusted: number;
+  entry_type?: string;
+  scheduled_work_date?: string | null;
 };
 
 type HolidayRow = {
@@ -56,11 +58,31 @@ const absenceStatusMap: Record<string, string> = {
   OUTRO: "ABONO",
 };
 
-function pairWorkedMinutes(entries: TimeEntryRow[]): number {
+export function pairWorkedMinutes(entries: TimeEntryRow[]): number {
+  const timestampMinutes=(value:string)=>Date.parse(`${value.slice(0,10)}T00:00:00Z`)/60000+dateTimeMinutes(value);
   let total = 0;
+  if (entries.every((e) => e.entry_type && e.entry_type !== "OTHER")) {
+    let open: TimeEntryRow | null = null;
+    for (const entry of entries) {
+      if (entry.entry_type === "CLOCK_IN" || entry.entry_type === "BREAK_IN") {
+        if (!open) open = entry;
+      } else if (
+        open &&
+        (entry.entry_type === "CLOCK_OUT" || entry.entry_type === "BREAK_OUT")
+      ) {
+        total += Math.max(
+          0,
+          timestampMinutes(entry.registered_at) -
+            timestampMinutes(open.registered_at),
+        );
+        open = null;
+      }
+    }
+    return total;
+  }
   for (let i = 0; i + 1 < entries.length; i += 2) {
-    const start = dateTimeMinutes(entries[i].registered_at);
-    const end = dateTimeMinutes(entries[i + 1].registered_at);
+    const start = timestampMinutes(entries[i].registered_at);
+    const end = timestampMinutes(entries[i + 1].registered_at);
     if (end >= start) total += end - start;
   }
   return total;
@@ -77,7 +99,13 @@ export async function processPeriod(params: {
   employeeId?: number;
   employeeIds?: number[];
 }) {
-  const { tenantId, start, end, employeeId, employeeIds: selectedEmployeeIds } = params;
+  const {
+    tenantId,
+    start,
+    end,
+    employeeId,
+    employeeIds: selectedEmployeeIds,
+  } = params;
   if (selectedEmployeeIds && !selectedEmployeeIds.length)
     return { processed: 0, employees: 0, days: 0 };
 
@@ -131,16 +159,19 @@ export async function processPeriod(params: {
   if (employeeIds.length) {
     const placeholders = employeeIds.map(() => "?").join(",");
     const [entries] = await pool.query<any[]>(
-      `SELECT id, employee_id, registered_at, manually_adjusted
+      `SELECT id, employee_id, registered_at, manually_adjusted, entry_type, scheduled_work_date
          FROM time_entries
         WHERE tenant_id = ?
           AND employee_id IN (${placeholders})
-          AND DATE(registered_at) BETWEEN ? AND ?
+          AND COALESCE(scheduled_work_date,DATE(registered_at)) BETWEEN ? AND ?
         ORDER BY employee_id, registered_at`,
       [tenantId, ...employeeIds, start, end],
     );
     for (const entry of entries) {
-      const date = entry.registered_at.slice(0, 10);
+      const date = (entry.scheduled_work_date || entry.registered_at).slice(
+        0,
+        10,
+      );
       const key = `${entry.employee_id}:${date}`;
       const list = entriesByEmployeeDate.get(key) || [];
       list.push(entry);

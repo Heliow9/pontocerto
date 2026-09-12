@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Company } from "../types";
 import { Modal } from "../components/Modal";
+import { CompanyAutomation } from "../components/CompanyAutomation";
 import { Badge, Empty, PageHeader } from "../components/Ui";
 import { apiMessage } from "../utils";
 const blank = {
@@ -615,6 +616,7 @@ export function CompaniesPage({
               <button className="primary">Salvar empresa</button>
             </div>
           </AsyncForm>
+          {editing && <CompanyAutomation key={editing.id} id={editing.id} />}
         </Modal>
       )}
     </>

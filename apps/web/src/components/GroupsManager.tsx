@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { OvertimeReference } from "./OvertimeReference";
 import { api } from "../api";
 import { apiMessage } from "../utils";
 import { Company, Employee } from "../types";
@@ -147,6 +148,7 @@ export function GroupsManager({
           </select>
         </label>
       </div>
+      {id && <OvertimeReference key={id} kind="group" id={id} />}
       <form onSubmit={save} aria-busy={busy}>
         <fieldset disabled={busy} className="group-fields">
           <div className="form-grid">
