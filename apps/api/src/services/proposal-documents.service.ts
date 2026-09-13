@@ -13,8 +13,8 @@ const exec=promisify(execFile);
 export async function proposalDocx(proposal:any){
   const template=await loadCommercialTemplate("proposta-ponto-certo.docx");
   const features=readJson<Features>(proposal.features_json,{} as Features);
-  const planName=proposal.plan_name || proposal.plan_name_snapshot || "Plano contratado";
-  const number=proposal.proposal_number || `PC-${String(proposal.created_at||"").slice(0,4)||new Date().getFullYear()}-${String(proposal.id||1).padStart(5,"0")}`;
+  const planName=proposal.plan_name||proposal.plan_name_snapshot||"Plano contratado";
+  const number=proposal.proposal_number||`PC-${String(proposal.created_at||"").slice(0,4)||new Date().getFullYear()}-${String(proposal.id||1).padStart(5,"0")}`;
   const doc=new Docxtemplater(new PizZip(template),{paragraphLoop:true,linebreaks:true,delimiters:{start:"{{",end:"}}"},nullGetter:()=>""});
   doc.render({
     numero_proposta:number,
