@@ -15,9 +15,9 @@ export function PasswordPage() {
     <>
       <PageHeader
         title="Alterar senha"
-        subtitle="Atualize a senha da sua própria conta."
+        subtitle="Atualize a senha da sua conta administrativa com segurança."
       />
-      <section className="panel" style={{ maxWidth: 560 }}>
+      <section className="panel commercial-password-panel">
         <p>
           Informe sua senha atual e escolha uma nova com pelo menos 8
           caracteres. Evite reutilizar senhas de outros serviços.

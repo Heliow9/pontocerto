@@ -20,6 +20,16 @@ const paths: Record<string, string> = {
   search: "M11 3a8 8 0 1 1 0 16 8 8 0 0 1 0-16 M17 17l5 5",
   help: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18 M9.5 9a2.5 2.5 0 1 1 4 2c-1 .5-1.5 1-1.5 2 M12 17h.01",
   arrow: "M5 12h14 M13 6l6 6-6 6",
+  users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M19 8v6 M22 11h-6",
+  plans: "M4 7h16 M4 12h16 M4 17h10 M3 4h18v16H3z",
+  subscription: "M3 6h18v12H3z M7 10h4 M7 14h7",
+  proposal: "M6 2h9l5 5v15H6z M14 2v6h6 M9 13h6 M9 17h4",
+  contract: "M6 2h9l5 5v15H6z M14 2v6h6 M9 12h6 M9 16h6 M9 20h3",
+  audit: "M12 3 4 6v5c0 5 3.5 8 8 10 4.5-2 8-5 8-10V9z M9 13l2 2 4-4",
+  mail: "M3 5h18v14H3z M3 7l9 6 9-6",
+  logout: "M10 17l5-5-5-5 M15 12H3 M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7",
+  menu: "M4 6h16 M4 12h16 M4 18h16",
+  close: "M6 6l12 12 M18 6 6 18",
   check: "m5 12 4 4L19 6",
 };
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {

@@ -79,8 +79,8 @@ export function SaasPage({
   if (!loadState.ready)
     return (
       <InitialPageState
-        title="Administração SaaS"
-        subtitle="Tenants, planos e capacidade da plataforma"
+        title="Clientes / Empresas"
+        subtitle="Cadastre e acompanhe os clientes SaaS, empresas vinculadas, capacidade e status comercial."
         state={loadState}
         retry={load}
       />
@@ -89,30 +89,27 @@ export function SaasPage({
     <>
       <LoadState state={loadState} retry={load} />
       <PageHeader
-        title="Administração SaaS"
-        subtitle="Tenants, planos e capacidade da plataforma"
+        title="Clientes / Empresas"
+        subtitle="Cadastre e acompanhe os clientes SaaS, empresas vinculadas, capacidade e status comercial."
         action={
           <button className="primary" onClick={() => setOpen(true)}>
-            + Novo tenant
+            + Novo cliente
           </button>
         }
       />
-      <section className="stats-grid">
-        {plans.map((p) => (
-          <div className="stat-card" key={p.id}>
-            <span>{p.name}</span>
-            <strong>
-              R$ {Number(p.price_monthly).toFixed(2).replace(".", ",")}
-            </strong>
-            <small>
-              {p.max_employees
-                ? `até ${p.max_employees} funcionários`
-                : "funcionários ilimitados"}
-            </small>
-          </div>
+      <section className="commercial-metrics client-metrics">
+        {[
+          ["Total de clientes", tenants.length, "blue"],
+          ["Clientes ativos", tenants.filter((t) => t.status === "ACTIVE").length, "green"],
+          ["Suspensos", tenants.filter((t) => t.status === "SUSPENDED").length, "amber"],
+          ["Funcionários ativos", tenants.reduce((sum, t) => sum + Number(t.employee_count || 0), 0), "teal"],
+        ].map(([label, value, tone]) => (
+          <article className={`commercial-metric metric-${tone}`} key={String(label)}>
+            <div><p>{label}</p><strong>{value}</strong></div>
+          </article>
         ))}
       </section>
-      <div className="panel">
+      <div className="panel table-panel">
         {tenants.length === 0 ? (
           <Empty>Nenhum tenant cadastrado.</Empty>
         ) : (
@@ -172,7 +169,7 @@ export function SaasPage({
         )}
       </div>
       {open && (
-        <Modal title="Criar novo tenant" onClose={() => setOpen(false)} wide>
+        <Modal title="Criar novo cliente SaaS" onClose={() => setOpen(false)} wide>
           <AsyncForm className="form-grid" onSubmit={create}>
             <div className="section-label span-2">Cliente SaaS</div>
             <label>
