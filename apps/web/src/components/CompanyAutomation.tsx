@@ -123,7 +123,10 @@ export function CompanyAutomation({ id }: { id: number }) {
             Configure a quantidade no grupo ou funcionário. Avisos em 50%, 100%
             e ao ultrapassar 100%, sem bloquear o ponto. Os avisos consideram os
             registros apurados; cada marco é avisado uma vez por mês e
-            destinatário.
+            destinatário. Após ultrapassar a referência mensal, há também um
+            aviso por jornada ao passar da saída prevista com o ponto aberto,
+            sem aguardar a marcação de saída. A verificação ocorre a cada
+            minuto.
           </p>
           <label>
             <input
@@ -348,9 +351,11 @@ export function CompanyAutomation({ id }: { id: number }) {
                 <details key={a.id}>
                   <summary>
                     {a.month_key} · {a.recipient} ·{" "}
-                    {a.threshold_key === "OVER"
-                      ? "Ultrapassou"
-                      : `${a.threshold_key}%`}{" "}
+                    {String(a.threshold_key).startsWith("D:")
+                      ? `Ponto aberto após a saída · ${a.threshold_key.slice(8, 10)}/${a.threshold_key.slice(6, 8)}/${a.threshold_key.slice(2, 6)}`
+                      : a.threshold_key === "OVER"
+                        ? "Ultrapassou"
+                        : `${a.threshold_key}%`}{" "}
                     · {labels[a.status] || a.status}
                     {a.error_code === "RATE_LIMITED"
                       ? " · Retida por limite"
@@ -362,7 +367,9 @@ export function CompanyAutomation({ id }: { id: number }) {
                   </summary>
                   <p style={{ whiteSpace: "pre-wrap" }}>{a.message_text}</p>
                   {a.next_attempt_at && a.status === "PENDING" && (
-                    <small>Próxima tentativa: {String(a.next_attempt_at)}</small>
+                    <small>
+                      Próxima tentativa: {String(a.next_attempt_at)}
+                    </small>
                   )}
                 </details>
               ))}

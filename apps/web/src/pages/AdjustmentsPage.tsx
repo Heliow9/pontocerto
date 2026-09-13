@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Badge, Empty, PageHeader } from "../components/Ui";
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { DataTable } from "../components/DataTable";
 import { AsyncForm } from "../components/AsyncForm";
 import { Modal } from "../components/Modal";
@@ -43,6 +47,15 @@ export function AdjustmentsPage({
     }
   }
   const filtered = items.filter((i) => !status || i.status === status);
+  if (!state.ready)
+    return (
+      <InitialPageState
+        title="Solicitações de ajuste"
+        subtitle="Revise pedidos dos funcionários e acompanhe as decisões"
+        state={state}
+        retry={load}
+      />
+    );
   return (
     <>
       <PageHeader

@@ -1,4 +1,8 @@
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
@@ -72,6 +76,15 @@ export function SaasPage({
       notify(apiMessage(err), "error");
     }
   }
+  if (!loadState.ready)
+    return (
+      <InitialPageState
+        title="Administração SaaS"
+        subtitle="Tenants, planos e capacidade da plataforma"
+        state={loadState}
+        retry={load}
+      />
+    );
   return (
     <>
       <LoadState state={loadState} retry={load} />

@@ -1,4 +1,8 @@
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
 import { api } from "../api";
@@ -90,6 +94,15 @@ export function ReportsPage({
     }),
     { expected: 0, normal: 0, extra: 0, late: 0, absence: 0 },
   );
+  if (!state.ready && tab === "monthly")
+    return (
+      <InitialPageState
+        title="Relatórios"
+        subtitle="Espelho mensal e exportação de pontos para a folha de pagamento"
+        state={state}
+        retry={loadEmployees}
+      />
+    );
   return (
     <>
       <PageHeader

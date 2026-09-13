@@ -42,7 +42,7 @@ export function DashboardPage() {
             </button>
           }
         />
-        <LoadState state={state} retry={load} />
+        <LoadState state={state} retry={load} variant="dashboard" />
       </>
     );
 
@@ -61,7 +61,7 @@ export function DashboardPage() {
           </button>
         }
       />
-      <LoadState state={state} retry={load} />
+      <LoadState state={state} retry={load} variant="dashboard" />
       <section className="dashboard-welcome">
         <div>
           <span className="eyebrow">SUA ROTINA, MAIS ORGANIZADA</span>

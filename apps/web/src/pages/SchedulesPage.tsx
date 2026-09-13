@@ -1,5 +1,9 @@
 import { useAccess } from "../components/Access";
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { useEffect, useState } from "react";
 import { api } from "../api";
@@ -110,6 +114,15 @@ export function SchedulesPage({
       notify(apiMessage(err), "error");
     }
   }
+  if (!loadState.ready)
+    return (
+      <InitialPageState
+        title="Escalas e jornadas"
+        subtitle="Defina horários, folgas e tolerâncias"
+        state={loadState}
+        retry={load}
+      />
+    );
   return (
     <>
       <LoadState state={loadState} retry={load} />

@@ -1,6 +1,7 @@
 import { pool } from "../db/pool.js";
 import { processPeriod } from "./calculation.service.js";
 import { hoursText, reachedThresholds } from "./overtime-rules.js";
+import { collectLiveOvertimeAlerts } from "./live-overtime.service.js";
 
 export async function overtimeSummary(
   tenantId: number,
@@ -24,7 +25,7 @@ export async function overtimeSummary(
     employeeIds: employees.map((e) => Number(e.id)),
   });
   const [rows] = await pool.query<any[]>(
-    `SELECT e.id,e.name,g.name AS group_name,
+    `SELECT e.id,e.name,e.work_schedule_id,g.name AS group_name,
  COALESCE(i.monthly_minutes,r.monthly_minutes) AS reference_minutes,
  CASE WHEN i.monthly_minutes IS NOT NULL THEN 'INDIVIDUAL' ELSE 'GROUP' END AS reference_source,
  COALESCE(SUM(d.overtime_minutes),0) AS overtime_minutes
@@ -34,20 +35,22 @@ export async function overtimeSummary(
  LEFT JOIN overtime_references r ON r.tenant_id=e.tenant_id AND r.company_id=e.company_id AND r.entity_kind='group' AND r.entity_id=g.id
  LEFT JOIN daily_time_calculations d ON d.employee_id=e.id AND d.tenant_id=e.tenant_id AND d.company_id=e.company_id AND d.work_date BETWEEN ? AND ?
  WHERE e.tenant_id=? AND e.company_id=? AND e.active=1
- GROUP BY e.id,e.name,g.name,i.monthly_minutes,r.monthly_minutes ORDER BY e.name`,
+ GROUP BY e.id,e.name,e.work_schedule_id,g.name,i.monthly_minutes,r.monthly_minutes ORDER BY e.name`,
     [start, end, tenantId, companyId],
   );
   return rows;
 }
 
-export async function collectOvertimeAlerts() {
-  const month = new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7);
+export async function collectOvertimeAlerts(now = Date.now()) {
+  const month = new Date(now - 3 * 3600000).toISOString().slice(0, 7);
   await pool.query(
-    "UPDATE overtime_alerts SET status='EXPIRED' WHERE status='PENDING' AND month_key<?",
+    `UPDATE overtime_alerts SET status='EXPIRED' WHERE status='PENDING'
+       AND ((month_key<? AND threshold_key NOT LIKE 'D:%')
+         OR (threshold_key LIKE 'D:%' AND created_at<DATE_SUB(NOW(),INTERVAL 1 DAY)))`,
     [month],
   );
   const [companies] = await pool.query<any[]>(
-    `SELECT a.*,c.legal_name FROM company_automation a JOIN companies c ON c.id=a.company_id AND c.tenant_id=a.tenant_id AND c.active=1 JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE' WHERE a.overtime_enabled=1`,
+    `SELECT a.*,c.legal_name,p.schedule_early_margin_minutes FROM company_automation a JOIN companies c ON c.id=a.company_id AND c.tenant_id=a.tenant_id AND c.active=1 JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE' LEFT JOIN company_profiles p ON p.tenant_id=c.tenant_id AND p.company_id=c.id WHERE a.overtime_enabled=1`,
   );
   for (const company of companies) {
     await pool.query(
@@ -68,7 +71,7 @@ export async function collectOvertimeAlerts() {
           row.reference_minutes == null ? null : Number(row.reference_minutes);
       const thresholds = reachedThresholds(minutes, reference);
       await pool.query(
-        `UPDATE overtime_alerts SET status='CANCELED' WHERE tenant_id=? AND company_id=? AND employee_id=? AND month_key=? AND status='PENDING'${thresholds.length ? ` AND threshold_key NOT IN (${thresholds.map(() => "?").join(",")})` : ""}`,
+        `UPDATE overtime_alerts SET status='CANCELED' WHERE tenant_id=? AND company_id=? AND employee_id=? AND month_key=? AND status='PENDING' AND threshold_key IN ('50','100','OVER')${thresholds.length ? ` AND threshold_key NOT IN (${thresholds.map(() => "?").join(",")})` : ""}`,
         [company.tenant_id, company.company_id, row.id, month, ...thresholds],
       );
       for (const threshold of thresholds) {
@@ -87,6 +90,26 @@ export async function collectOvertimeAlerts() {
             ],
           );
       }
+    }
+    await collectLiveOvertimeAlerts(company, rows, recipients, month, now);
+    // A night shift may end after a month boundary. Its allowance still belongs
+    // to its work date; only live alerts (not old monthly milestones) are read.
+    const earliestWorkMonth = new Date(now - 3 * 3600000 - 2 * 86400000)
+      .toISOString()
+      .slice(0, 7);
+    if (earliestWorkMonth !== month && recipients.length) {
+      const previousRows = await overtimeSummary(
+        company.tenant_id,
+        company.company_id,
+        earliestWorkMonth,
+      );
+      await collectLiveOvertimeAlerts(
+        company,
+        previousRows,
+        recipients,
+        earliestWorkMonth,
+        now,
+      );
     }
   }
 }

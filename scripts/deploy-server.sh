@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PWA_ROOT="$(sudo nginx -T 2>/dev/null | node scripts/nginx-pwa-root.mjs hubpontocerto.duckdns.org)"
-WEB_ROOT=/var/www/pontoocerto
+sudo nginx -t
+PWA_DOMAIN="${PWA_DOMAIN:-hubpontocerto.duckdns.org}"
+PWA_ROOT="$(sudo nginx -T 2>/dev/null | node scripts/nginx-pwa-root.mjs "$PWA_DOMAIN")"
+WEB_ROOT="${WEB_ROOT:-/var/www/pontoocerto}"
 test -f "$WEB_ROOT/index.html" || { echo "Confira a pasta do painel web: $WEB_ROOT"; exit 1; }
 test "$(realpath "$PWA_ROOT")" != "$(realpath "$WEB_ROOT")" || { echo "Painel e PWA devem ter pastas distintas."; exit 1; }
 printf 'PWA encontrado: %s\n' "$PWA_ROOT"
@@ -16,4 +18,5 @@ if [ "$(realpath apps/web/dist)" != "$(realpath "$WEB_ROOT")" ]; then sudo cp -a
 sudo nginx -t
 sudo systemctl reload nginx
 pm2 logs ponto-certo-api --lines 30 --nostream
-printf '\nPublicado. Abra https://hubpontocerto.duckdns.org/ e aceite Atualizar aplicativo.\n'
+printf '\nPublicado. Abra https://%s/ e aceite Atualizar aplicativo.\n' "$PWA_DOMAIN"
+printf 'No painel web, aceite Atualizar painel quando o aviso aparecer. Backup: %s\n' "$BACKUP_DIR"

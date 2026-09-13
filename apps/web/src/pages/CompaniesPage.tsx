@@ -1,6 +1,10 @@
 import { useAccess } from "../components/Access";
 import { LocationPicker } from "../components/LocationPicker";
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
@@ -197,6 +201,15 @@ export function CompaniesPage({
       notify(apiMessage(err), "error");
     }
   }
+  if (!loadState.ready)
+    return (
+      <InitialPageState
+        title="Empresas"
+        subtitle="Endereço, geofence, biometria nativa e vínculo de dispositivo"
+        state={loadState}
+        retry={load}
+      />
+    );
   return (
     <>
       <LoadState state={loadState} retry={load} />
@@ -617,10 +630,15 @@ export function CompaniesPage({
               <button className="primary">Salvar empresa</button>
             </div>
           </AsyncForm>
-          {editing && (<>
-            <CompanyAutomation key={`automation-${editing.id}`} id={editing.id} />
-            <CompanyLogs key={`logs-${editing.id}`} id={editing.id} />
-          </>)}
+          {editing && (
+            <>
+              <CompanyAutomation
+                key={`automation-${editing.id}`}
+                id={editing.id}
+              />
+              <CompanyLogs key={`logs-${editing.id}`} id={editing.id} />
+            </>
+          )}
         </Modal>
       )}
     </>

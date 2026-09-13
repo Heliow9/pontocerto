@@ -1,7 +1,11 @@
 import { EmployeeImport } from "../components/EmployeeImport";
 import { GroupsManager, type EmployeeGroup } from "../components/GroupsManager";
 import { useAccess } from "../components/Access";
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -255,6 +259,15 @@ export function EmployeesPage({
             ? !i.location_names
             : !Number(i.device_count))),
   );
+  if (!loadState.ready)
+    return (
+      <InitialPageState
+        title="Funcionários"
+        subtitle="Cadastros, jornadas, locais permitidos e acesso ao aplicativo"
+        state={loadState}
+        retry={load}
+      />
+    );
   return (
     <>
       <LoadState state={loadState} retry={load} />
@@ -796,7 +809,13 @@ export function EmployeesPage({
               </div>
             </AsyncForm>
           )}
-          {editing && <OvertimeReference key={editing.id} kind="employee" id={editing.id} />}
+          {editing && (
+            <OvertimeReference
+              key={editing.id}
+              kind="employee"
+              id={editing.id}
+            />
+          )}
         </Modal>
       )}
     </>

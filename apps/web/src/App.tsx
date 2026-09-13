@@ -1,18 +1,9 @@
-import { PasswordPage } from "./pages/PasswordPage";
 import { PwaNotice } from "./components/PwaNotice";
-import { AdjustmentsPage } from "./pages/AdjustmentsPage";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
-import { DashboardPage } from "./pages/DashboardPage";
-import { CompaniesPage } from "./pages/CompaniesPage";
-import { EmployeesPage } from "./pages/EmployeesPage";
-import { SchedulesPage } from "./pages/SchedulesPage";
-import { PointsPage } from "./pages/PointsPage";
-import { OccurrencesPage } from "./pages/OccurrencesPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { SettingsPage } from "./pages/SettingsPage";
-import { SaasPage } from "./pages/SaasPage";
-import { LocationsPage } from "./pages/LocationsPage";
+import { PageHeader } from "./components/Ui";
+import { PageSkeleton } from "./components/PageSkeleton";
+import { RouteErrorBoundary } from "./components/RouteErrorBoundary";
 import { apiMessage } from "./utils";
 
 import { useRef } from "react";
@@ -34,6 +25,50 @@ type Page =
   | "saas"
   | "adjustments"
   | "password";
+const loaders = {
+  password: () =>
+    import("./pages/PasswordPage").then((m) => ({ default: m.PasswordPage })),
+  dashboard: () =>
+    import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })),
+  companies: () =>
+    import("./pages/CompaniesPage").then((m) => ({ default: m.CompaniesPage })),
+  employees: () =>
+    import("./pages/EmployeesPage").then((m) => ({ default: m.EmployeesPage })),
+  schedules: () =>
+    import("./pages/SchedulesPage").then((m) => ({ default: m.SchedulesPage })),
+  locations: () =>
+    import("./pages/LocationsPage").then((m) => ({ default: m.LocationsPage })),
+  points: () =>
+    import("./pages/PointsPage").then((m) => ({ default: m.PointsPage })),
+  occurrences: () =>
+    import("./pages/OccurrencesPage").then((m) => ({
+      default: m.OccurrencesPage,
+    })),
+  reports: () =>
+    import("./pages/ReportsPage").then((m) => ({ default: m.ReportsPage })),
+  settings: () =>
+    import("./pages/SettingsPage").then((m) => ({ default: m.SettingsPage })),
+  saas: () => import("./pages/SaasPage").then((m) => ({ default: m.SaasPage })),
+  adjustments: () =>
+    import("./pages/AdjustmentsPage").then((m) => ({
+      default: m.AdjustmentsPage,
+    })),
+};
+const PasswordPage = lazy(loaders.password),
+  DashboardPage = lazy(loaders.dashboard),
+  CompaniesPage = lazy(loaders.companies),
+  EmployeesPage = lazy(loaders.employees),
+  SchedulesPage = lazy(loaders.schedules),
+  LocationsPage = lazy(loaders.locations),
+  PointsPage = lazy(loaders.points),
+  OccurrencesPage = lazy(loaders.occurrences),
+  ReportsPage = lazy(loaders.reports),
+  SettingsPage = lazy(loaders.settings),
+  SaasPage = lazy(loaders.saas),
+  AdjustmentsPage = lazy(loaders.adjustments);
+function preload(page: Page) {
+  void loaders[page]().catch(() => {});
+}
 const nav: { id: Page; label: string; group: string }[] = [
   { id: "password", label: "Alterar senha", group: "Minha conta" },
   { id: "dashboard", label: "Visão geral", group: "Operação" },
@@ -48,14 +83,13 @@ const nav: { id: Page; label: string; group: string }[] = [
   { id: "settings", label: "Configurações", group: "Administração" },
   { id: "saas", label: "Administração SaaS", group: "Administração" },
 ];
-function readPage(): Page {
-  const value = location.hash.slice(1).split("?")[0];
+function readPage(hash: string): Page {
+  const value = hash.slice(1).split("?")[0];
   return nav.some((n) => n.id === value) ? (value as Page) : "dashboard";
 }
 export function App() {
   const [token, setToken] = useState(localStorage.getItem("pc_token")),
     [user, setUser] = useState<any>(null),
-    [page, setPage] = useState<Page>(readPage),
     [menu, setMenu] = useState(false),
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
@@ -67,6 +101,7 @@ export function App() {
     [toast, setToast] = useState<{ m: string; t: "ok" | "error" } | null>(null),
     [online, setOnline] = useState(navigator.onLine);
   const [route, setRoute] = useState(location.hash);
+  const page = readPage(route);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   function notify(m: string, t: "ok" | "error" = "ok") {
     clearTimeout(timer.current);
@@ -103,7 +138,6 @@ export function App() {
   }, [token]);
   useEffect(() => {
     const hash = () => {
-      setPage(readPage());
       setRoute(location.hash);
       setMenu(false);
       window.scrollTo(0, 0);
@@ -127,7 +161,6 @@ export function App() {
   }, []);
   function go(p: Page) {
     location.hash = p;
-    setPage(p);
     setMenu(false);
   }
   const canAdmin = ["SUPER_ADMIN", "TENANT_ADMIN", "RH"].includes(user?.role);
@@ -269,7 +302,10 @@ export function App() {
             </button>
           </div>
         ) : (
-          <p role="status">Verificando sua sessão…</p>
+          <p role="status">
+            <span className="loading-spinner" aria-hidden="true" />
+            Verificando sua sessão…
+          </p>
         )}
       </main>
     );
@@ -314,6 +350,8 @@ export function App() {
                   aria-current={page === n.id ? "page" : undefined}
                   className={page === n.id ? "active" : ""}
                   onClick={() => go(n.id)}
+                  onPointerEnter={() => preload(n.id)}
+                  onFocus={() => preload(n.id)}
                 >
                   <Icon name={n.id} size={18} />
                   {n.label}
@@ -376,7 +414,22 @@ export function App() {
             </div>
           )}
           <div className="page-content" key={route}>
-            {visible.some((n) => n.id === page) ? pages[page] : null}
+            <RouteErrorBoundary>
+              <Suspense
+                fallback={
+                  <>
+                    <PageHeader
+                      title={nav.find((n) => n.id === page)?.label || "Painel"}
+                    />
+                    <PageSkeleton
+                      variant={page === "dashboard" ? "dashboard" : "table"}
+                    />
+                  </>
+                }
+              >
+                {visible.some((n) => n.id === page) ? pages[page] : null}
+              </Suspense>
+            </RouteErrorBoundary>
           </div>
         </main>
         {menu && (

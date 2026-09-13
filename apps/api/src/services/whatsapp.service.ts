@@ -340,7 +340,10 @@ export async function runWhatsAppTick() {
         .toISOString()
         .slice(0, 7);
       const [rows] = await pool.query<any[]>(
-        "SELECT * FROM overtime_alerts WHERE tenant_id=? AND company_id=? AND status='PENDING' AND month_key=? AND (next_attempt_at IS NULL OR next_attempt_at<=NOW()) ORDER BY id LIMIT 1",
+        `SELECT * FROM overtime_alerts WHERE tenant_id=? AND company_id=? AND status='PENDING'
+           AND (month_key=? OR threshold_key LIKE 'D:%')
+           AND (threshold_key NOT LIKE 'D:%' OR created_at>=DATE_SUB(NOW(),INTERVAL 1 DAY))
+           AND (next_attempt_at IS NULL OR next_attempt_at<=NOW()) ORDER BY id LIMIT 1`,
         [company.tenant_id, company.company_id, month],
       );
       const alert = rows[0];
@@ -355,7 +358,7 @@ export async function runWhatsAppTick() {
         continue;
       }
 
-      const [pendingGroup] = await pool.query<any[]>(
+      const [pendingAlerts] = await pool.query<any[]>(
         `SELECT * FROM overtime_alerts
          WHERE tenant_id=? AND company_id=? AND employee_id=? AND month_key=? AND recipient=?
            AND status='PENDING' AND (next_attempt_at IS NULL OR next_attempt_at<=NOW())
@@ -367,6 +370,14 @@ export async function runWhatsAppTick() {
           alert.month_key,
           alert.recipient,
         ],
+      );
+      // Monthly milestones can share a message. Each live shift has its own
+      // dated message and must never absorb another shift or monthly milestone.
+      const liveAlert = String(alert.threshold_key).startsWith("D:");
+      const pendingGroup = pendingAlerts.filter((item) =>
+        liveAlert
+          ? item.threshold_key === alert.threshold_key
+          : !String(item.threshold_key).startsWith("D:"),
       );
       if (!pendingGroup.length) continue;
       const ids = pendingGroup.map((item: any) => Number(item.id));

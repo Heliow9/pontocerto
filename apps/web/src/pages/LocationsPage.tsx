@@ -1,6 +1,10 @@
 import { useAccess } from "../components/Access";
 import { LocationPicker } from "../components/LocationPicker";
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
@@ -82,6 +86,15 @@ export function LocationsPage({
       notify(apiMessage(err), "error");
     }
   }
+  if (!loadState.ready)
+    return (
+      <InitialPageState
+        title="Locais de trabalho"
+        subtitle="Geolocalização e raio permitido para registro de ponto"
+        state={loadState}
+        retry={load}
+      />
+    );
   return (
     <>
       <LoadState state={loadState} retry={load} />

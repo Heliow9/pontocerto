@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   collect: vi.fn(),
   state: "PENDING",
   companies: [] as any[],
+  alerts: [] as any[],
 }));
 vi.mock("../apps/api/src/db/pool.js", () => ({
   pool: {
@@ -41,6 +42,14 @@ beforeEach(() => {
   vi.stubEnv("WHATSAPP_ENCRYPTION_KEY", "a".repeat(64));
   m.events = {};
   m.state = "PENDING";
+  m.alerts = [
+    {
+      id: 9,
+      recipient: "5511999999999",
+      threshold_key: "OVER",
+      message_text: "fixture only",
+    },
+  ];
   m.companies = [
     {
       tenant_id: 7,
@@ -62,31 +71,97 @@ beforeEach(() => {
     logout: async () => {},
   }));
   m.send.mockResolvedValue({ key: { id: "message-1" } });
-  m.onWhatsApp.mockResolvedValue([{ exists: true, jid: "5511999999999@s.whatsapp.net" }]);
+  m.onWhatsApp.mockResolvedValue([
+    { exists: true, jid: "5511999999999@s.whatsapp.net" },
+  ]);
   m.query.mockImplementation(async (sql: string, args: any[]) => {
     if (sql.includes("SELECT a.*")) return [m.companies];
     if (sql.includes("SELECT encrypted_value")) return [[]];
     if (sql.includes("SELECT * FROM overtime_alerts"))
       return [
         m.state === "PENDING"
-          ? [
-              {
-                id: 9,
-                recipient: "5511999999999",
-                message_text: "fixture only",
-              },
-            ]
+          ? sql.includes("LIMIT 1")
+            ? m.alerts.slice(0, 1)
+            : m.alerts
           : [],
       ];
     if (sql.includes("SET status='SENDING'")) {
       m.state = "SENDING";
       return [{ affectedRows: 1 }];
     }
-    if (sql.includes("SET status='SENT'") || sql.includes("SET status='ACCEPTED'")) m.state = "ACCEPTED";
+    if (
+      sql.includes("SET status='SENT'") ||
+      sql.includes("SET status='ACCEPTED'")
+    )
+      m.state = "ACCEPTED";
     if (sql.includes("SET status='UNKNOWN',error_code='SEND_UNCONFIRMED'"))
       m.state = "UNKNOWN";
+    if (sql.trimStart().startsWith("SELECT")) return [[]];
     return [{ affectedRows: 1 }];
   });
+});
+
+it("envia o aviso de jornada sem misturá-lo a marcos mensais ou a outra data", async () => {
+  m.alerts = [
+    {
+      id: 9,
+      recipient: "5511999999999",
+      threshold_key: "D:20260914",
+      message_text:
+        "Jornada de segunda: saída prevista às 17:00, ponto aberto.",
+    },
+    {
+      id: 10,
+      recipient: "5511999999999",
+      threshold_key: "OVER",
+      message_text: "Marco mensal ultrapassado.",
+    },
+    {
+      id: 11,
+      recipient: "5511999999999",
+      threshold_key: "D:20260915",
+      message_text: "Jornada de terça: saída prevista às 17:00, ponto aberto.",
+    },
+  ];
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ connection: "open" });
+  await worker.runWhatsAppTick();
+  expect(m.send).toHaveBeenCalledWith(
+    "5511999999999@s.whatsapp.net",
+    { text: m.alerts[0].message_text },
+    { messageId: "message-1" },
+  );
+  const claim = m.query.mock.calls.find(([sql]) =>
+    sql.includes("SET status='SENDING'"),
+  );
+  expect(claim![1]).toEqual(["message-1", 9]);
+});
+
+it("consolida apenas marcos mensais quando um aviso de jornada também aguarda", async () => {
+  m.alerts = [
+    {
+      id: 9,
+      recipient: "5511999999999",
+      threshold_key: "OVER",
+      message_text: "Marco mensal ultrapassado.",
+    },
+    {
+      id: 10,
+      recipient: "5511999999999",
+      threshold_key: "D:20260914",
+      message_text: "Ponto aberto.",
+    },
+  ];
+  const worker = await import("../apps/api/src/services/whatsapp.service");
+  await worker.runWhatsAppTick();
+  m.events["connection.update"]({ connection: "open" });
+  await worker.runWhatsAppTick();
+  expect(m.send).toHaveBeenCalledWith(
+    "5511999999999@s.whatsapp.net",
+    { text: "Marco mensal ultrapassado." },
+    { messageId: "message-1" },
+  );
 });
 afterEach(() => vi.unstubAllEnvs());
 it("envia pela sessão correta e não repete o alerta depois da confirmação", async () => {
@@ -127,8 +202,7 @@ it("reconecta após restart requerido no pareamento sem ficar preso em conectand
   await worker.runWhatsAppTick();
   expect(m.socket).toHaveBeenCalledTimes(1);
   m.events["connection.update"]({ qr: "fixture-qr" });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(worker.whatsappStatus(7, 2).status).toBe("QR");
+  await vi.waitFor(() => expect(worker.whatsappStatus(7, 2).status).toBe("QR"));
   m.events["connection.update"]({
     connection: "close",
     lastDisconnect: { error: { output: { statusCode: 515 } } },
@@ -189,8 +263,9 @@ it("não envia e registra destinatário inválido quando o número não existe n
   await worker.runWhatsAppTick();
   expect(m.send).not.toHaveBeenCalled();
   expect(
-    m.query.mock.calls.some(([sql, args]) =>
-      String(sql).includes("INVALID_RECIPIENT") && args?.includes(9),
+    m.query.mock.calls.some(
+      ([sql, args]) =>
+        String(sql).includes("INVALID_RECIPIENT") && args?.includes(9),
     ),
   ).toBe(true);
 });
@@ -206,8 +281,10 @@ it("marca a mensagem como entregue e depois lida pelos recibos do WhatsApp", asy
   ]);
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(
-    m.query.mock.calls.some(([sql, args]) =>
-      String(sql).includes("status='DELIVERED'") && args?.includes("message-1"),
+    m.query.mock.calls.some(
+      ([sql, args]) =>
+        String(sql).includes("status='DELIVERED'") &&
+        args?.includes("message-1"),
     ),
   ).toBe(true);
 
@@ -216,8 +293,9 @@ it("marca a mensagem como entregue e depois lida pelos recibos do WhatsApp", asy
   ]);
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(
-    m.query.mock.calls.some(([sql, args]) =>
-      String(sql).includes("status='READ'") && args?.includes("message-1"),
+    m.query.mock.calls.some(
+      ([sql, args]) =>
+        String(sql).includes("status='READ'") && args?.includes("message-1"),
     ),
   ).toBe(true);
 });

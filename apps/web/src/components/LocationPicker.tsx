@@ -1,6 +1,5 @@
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-import { useState, useEffect, useRef } from "react";
+import { lazy, Suspense, useState } from "react";
+const RadiusMap = lazy(() => import("./RadiusMap"));
 import { api } from "../api";
 import { apiMessage } from "../utils";
 export function LocationPicker({
@@ -127,7 +126,16 @@ export function LocationPicker({
       )}
       {valid && map && (
         <>
-          <RadiusMap latitude={lat} longitude={lng} radius={radius} />
+          <Suspense
+            fallback={
+              <div className="map-preview loading-caption" role="status">
+                <span className="loading-spinner" aria-hidden="true" />
+                Carregando mapa…
+              </div>
+            }
+          >
+            <RadiusMap latitude={lat} longitude={lng} radius={radius} />
+          </Suspense>
           <p className="muted">
             O círculo representa o raio permitido. Use os campos de coordenadas
             para ajustar o centro.
@@ -135,46 +143,5 @@ export function LocationPicker({
         </>
       )}
     </div>
-  );
-}
-
-function RadiusMap({
-  latitude,
-  longitude,
-  radius,
-}: {
-  latitude: number;
-  longitude: number;
-  radius: number;
-}) {
-  const element = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!element.current) return;
-    const map = L.map(element.current, { scrollWheelZoom: false });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    }).addTo(map);
-    const circle = L.circle([latitude, longitude], {
-      radius: Math.max(1, radius),
-      color: "#244a7d",
-      fillOpacity: 0.15,
-    }).addTo(map);
-    L.circleMarker([latitude, longitude], {
-      radius: 5,
-      color: "#172033",
-    }).addTo(map);
-    map.fitBounds(circle.getBounds(), { padding: [24, 24], maxZoom: 18 });
-    return () => {
-      map.remove();
-    };
-  }, [latitude, longitude, radius]);
-  return (
-    <div
-      ref={element}
-      role="region"
-      aria-label={`Mapa do local autorizado, raio de ${radius} metros`}
-      className="map-preview"
-    />
   );
 }

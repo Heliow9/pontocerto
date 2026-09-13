@@ -4,7 +4,21 @@ O processo da API informado é `ponto-certo-api`. Execute no servidor, com o mes
 
 ## Atualização completa
 
-Localize o repositório com `pm2 describe ponto-certo-api` e observe `exec cwd` e `script path`. Entre na raiz do repositório (a pasta que contém `apps` e o `package.json` principal).
+Para o servidor já configurado, o bloco abaixo identifica o repositório pelo processo PM2, baixa a versão do GitHub, guarda uma cópia dos arquivos publicados, recompila e publica web/PWA, aplica migrações pendentes e reinicia a API. Execute com o usuário que administra `ponto-certo-api`.
+
+```bash
+(
+  set -euo pipefail
+  APP_DIR="$(pm2 jlist | node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{const a=JSON.parse(s).find(p=>p.name==="ponto-certo-api");if(!a?.pm2_env?.pm_cwd)throw new Error("Processo ponto-certo-api não encontrado");process.stdout.write(a.pm2_env.pm_cwd)})')"
+  cd "$(git -C "$APP_DIR" rev-parse --show-toplevel)"
+  git pull --ff-only origin main
+  bash scripts/deploy-server.sh
+)
+```
+
+O script usa o diretório web existente `/var/www/pontoocerto` e identifica o diretório da PWA pelo domínio `hubpontocerto.duckdns.org` no Nginx. Se a configuração for diferente, passe os valores corretos: `WEB_ROOT=/pasta/do/painel PWA_DOMAIN=dominio-do-app bash scripts/deploy-server.sh`. Ele interrompe antes da compilação se não encontrar essas pastas ou se painel e PWA apontarem para a mesma pasta. Os backups ficam em `.deploy-backups/` no repositório.
+
+Para apenas recompilar, sem copiar os arquivos para as pastas publicadas, entre na raiz do repositório:
 
 ```bash
 cd /caminho/real/do/repositorio
@@ -38,7 +52,7 @@ As ferramentas de compilação estão nas dependências de desenvolvimento, por 
 
 ## Pastas publicadas e ambiente
 
-- API: `apps/api/dist/server.js`; o diretório de execução deve permitir carregar `apps/api/.env` e resolver a pasta de selfies existente. Preserve a configuração PM2 que já está em uso.
+- API: `apps/api/dist/src/server.js`; o diretório de execução deve permitir carregar `apps/api/.env` e resolver a pasta de selfies existente. Preserve a configuração PM2 que já está em uso.
 - Web: `apps/web/dist`.
 - PWA: `apps/mobile/dist`, incluindo `sw.js`, `manifest.webmanifest`, `icons` e `_expo`.
 - API: configurações de banco/JWT/CORS em `apps/api/.env`.

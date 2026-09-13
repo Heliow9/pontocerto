@@ -81,8 +81,11 @@ export function SettingsPage({
   if (!settings)
     return (
       <>
+        <PageHeader
+          title="Configurações"
+          subtitle="Identidade da organização, relatório e feriados"
+        />
         <LoadState state={loadState} retry={load} />
-        <PageHeader title="Configurações" />
       </>
     );
   return (

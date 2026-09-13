@@ -1,5 +1,9 @@
 import { useAccess } from "../components/Access";
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
@@ -72,6 +76,15 @@ export function OccurrencesPage({
       notify(apiMessage(err), "error");
     }
   }
+  if (!loadState.ready)
+    return (
+      <InitialPageState
+        title="Ocorrências"
+        subtitle="Atestados, férias, afastamentos, licenças e abonos"
+        state={loadState}
+        retry={load}
+      />
+    );
   return (
     <>
       <LoadState state={loadState} retry={load} />

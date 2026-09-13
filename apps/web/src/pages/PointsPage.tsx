@@ -1,5 +1,9 @@
 import { useAccess } from "../components/Access";
-import { LoadState, useLoadState } from "../components/LoadState";
+import {
+  InitialPageState,
+  LoadState,
+  useLoadState,
+} from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { useEffect, useState } from "react";
@@ -118,6 +122,15 @@ export function PointsPage({
       notify(apiMessage(err), "error");
     }
   }
+  if (!loadState.ready)
+    return (
+      <InitialPageState
+        title="Marcações de ponto"
+        subtitle="Consulte entradas e saídas. Abra os detalhes de segurança quando precisar conferir um registro."
+        state={loadState}
+        retry={load}
+      />
+    );
   return (
     <>
       <LoadState state={loadState} retry={load} />
@@ -256,7 +269,17 @@ export function PointsPage({
                       <Badge tone={i.source === "MANUAL" ? "warning" : "info"}>
                         {i.source}
                       </Badge>
-                      {i.remote_entry_id && <div className="muted">Remoto · {i.was_offline?"envio posterior":"online"}<br/>Horário do aparelho{i.synced_at&&<> · Recebido em {brDateTime(i.synced_at)}</>}</div>}
+                      {i.remote_entry_id && (
+                        <div className="muted">
+                          Remoto ·{" "}
+                          {i.was_offline ? "envio posterior" : "online"}
+                          <br />
+                          Horário do aparelho
+                          {i.synced_at && (
+                            <> · Recebido em {brDateTime(i.synced_at)}</>
+                          )}
+                        </div>
+                      )}
                     </td>
                     {securityDetails && (
                       <>

@@ -1,0 +1,212 @@
+/* Loading states reserve the content area without covering navigation. */
+.page-skeleton {
+  min-height: 400px;
+  width: 100%;
+}
+.loading-caption {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid #cce4e6;
+  border-top-color: var(--brand);
+  border-radius: 50%;
+  animation: loading-spin 0.85s linear infinite;
+}
+.skeleton-content {
+  display: grid;
+  gap: 20px;
+}
+.skeleton-bar {
+  display: block;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(100deg, #e8eef2 25%, #f5f8fa 45%, #e8eef2 65%);
+  background-size: 250% 100%;
+  animation: loading-shimmer 1.8s ease-in-out infinite;
+}
+.skeleton-bar.short {
+  width: 58%;
+}
+.skeleton-bar.number {
+  width: 44%;
+  height: 32px;
+  margin: 16px 0;
+}
+.skeleton-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.skeleton-toolbar .skeleton-bar {
+  height: 36px;
+  max-width: 260px;
+}
+.skeleton-toolbar .short {
+  max-width: 110px;
+  margin-left: auto;
+}
+.skeleton-table {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 3px 12px #172e4005;
+}
+.skeleton-row {
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 0.7fr;
+  align-items: center;
+  gap: 34px;
+  padding: 20px 24px;
+  border-bottom: 1px solid #edf1f4;
+}
+.skeleton-row:last-child {
+  border-bottom: 0;
+}
+.skeleton-row:nth-child(odd) .skeleton-bar:not(.short) {
+  width: 83%;
+}
+.skeleton-table-head {
+  min-height: 50px;
+  background: #f8fafb;
+}
+.skeleton-table-head .skeleton-bar {
+  height: 9px;
+  max-width: 90px;
+}
+.skeleton-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 18px;
+}
+.skeleton-stat {
+  padding: 24px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.refresh-indicator {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  color: #146571;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid #cde3e4;
+  border-radius: 40px;
+  box-shadow: 0 5px 24px #172e4018;
+}
+.load-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 16px 0;
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #efc9c4;
+  border-left: 4px solid #bd5146;
+  border-radius: 14px;
+  color: var(--ink);
+}
+.load-error p {
+  color: var(--muted);
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.load-error small {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.load-error button {
+  flex-shrink: 0;
+}
+.session-state .loading-spinner {
+  display: inline-block;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes loading-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (max-width: 640px) {
+  .skeleton-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .skeleton-stat {
+    padding: 18px;
+  }
+  .skeleton-toolbar {
+    padding: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .skeleton-toolbar .skeleton-bar {
+    max-width: none;
+    width: 100%;
+  }
+  .skeleton-toolbar .short {
+    width: 40%;
+    margin-left: 0;
+  }
+  .skeleton-table-head {
+    display: none;
+  }
+  .skeleton-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 18px 24px;
+    padding: 24px 18px;
+  }
+  .load-error {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px;
+  }
+  .refresh-indicator {
+    right: 16px;
+    bottom: 16px;
+    max-width: calc(100vw - 32px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bar,
+  .loading-spinner {
+    animation: none;
+  }
+}
