@@ -1,5 +1,9 @@
 import { Router } from "express";
-import bcrypt from "bcryptjs";
+import { createTenantInTransaction } from "../services/tenant-provisioning.service.js";
+import { commercialRouter,safe } from "./saas-commercial.routes.js";
+import { auditList } from "./team.routes.js";
+import { proposalsRouter } from "./proposals.routes.js";
+import { writeAudit } from "../utils/audit.js";
 import { z } from "zod";
 import { pool } from "../db/pool.js";
 import { authMiddleware } from "../middlewares/auth.js";
@@ -8,6 +12,9 @@ import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 
 export const saasRouter = Router();
 saasRouter.use(authMiddleware, requireRole("SUPER_ADMIN"));
+saasRouter.use(commercialRouter);
+saasRouter.use("/proposals",proposalsRouter);
+saasRouter.get("/audit",safe((req,res)=>auditList(req,res,true)));
 
 saasRouter.get("/plans", async (_req, res) => {
   const [rows] = await pool.query<any[]>(
@@ -30,6 +37,7 @@ saasRouter.get("/tenants", async (_req, res) => {
          SELECT MAX(s2.id) FROM subscriptions s2 WHERE s2.tenant_id=t.id
        )
        LEFT JOIN plans p ON p.id=s.plan_id
+      WHERE NOT EXISTS (SELECT 1 FROM users su WHERE su.tenant_id=t.id AND su.role='SUPER_ADMIN')
       GROUP BY t.id, t.name, t.slug, t.status, t.created_at, p.name, s.status, s.trial_ends_at, s.current_period_end
       ORDER BY t.created_at DESC`
   );
@@ -55,46 +63,9 @@ saasRouter.post("/tenants", async (req, res) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    const [tenantResult] = await conn.query<any>(
-      `INSERT INTO tenants (name, slug, status, created_at, updated_at)
-       VALUES (?, ?, 'ACTIVE', ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
-      [d.tenantName, d.slug]
-    );
-    const tenantId = Number(tenantResult.insertId);
-    const [companyResult] = await conn.query<any>(
-      `INSERT INTO companies (tenant_id, legal_name, trade_name, cnpj, active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
-      [tenantId, d.companyName, d.companyName, d.cnpj || null]
-    );
-    const companyId = Number(companyResult.insertId);
-    await conn.query(
-      `INSERT INTO company_profiles (tenant_id, company_id, created_at, updated_at)
-       VALUES (?, ?, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
-      [tenantId, companyId]
-    );
-    await conn.query(
-      `INSERT INTO tenant_settings (tenant_id, report_title, report_footer, timezone, created_at, updated_at)
-       VALUES (?, 'Relatório de Pontos', 'Ponto Certo SaaS - Sistema de gestão de jornada',
-               'America/Sao_Paulo', ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
-      [tenantId]
-    );
-    const hash = await bcrypt.hash(d.adminPassword, 10);
-    await conn.query(
-      `INSERT INTO users
-       (tenant_id, company_id, employee_id, name, email, password_hash, role, active, created_at, updated_at)
-       VALUES (?, ?, NULL, ?, ?, ?, 'TENANT_ADMIN', 1, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
-      [tenantId, companyId, d.adminName, d.adminEmail, hash]
-    );
-    if (d.planId) {
-      await conn.query(
-        `INSERT INTO subscriptions
-         (tenant_id, plan_id, status, starts_at, trial_ends_at, current_period_end, created_at, updated_at)
-         VALUES (?, ?, ?, ${BRASILIA_NOW_SQL}, DATE_ADD(${BRASILIA_NOW_SQL}, INTERVAL ? DAY),
-                 DATE_ADD(${BRASILIA_NOW_SQL}, INTERVAL 1 MONTH), ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
-        [tenantId, d.planId, d.trialDays > 0 ? "TRIAL" : "ACTIVE", d.trialDays]
-      );
-    }
+    const {tenantId,companyId} = await createTenantInTransaction(conn,d);
     await conn.commit();
+    await writeAudit(req,"CREATE","tenant",tenantId,undefined,{companyId,planId:d.planId});
     res.status(201).json({ tenantId, companyId });
   } catch (error: any) {
     await conn.rollback();
@@ -114,5 +85,6 @@ saasRouter.patch("/tenants/:id/status", async (req, res) => {
     [parsed.data.status, id]
   );
   if (!result.affectedRows) return res.status(404).json({ message: "Tenant não encontrado." });
+  await writeAudit(req,"UPDATE_STATUS","tenant",id,undefined,parsed.data);
   res.json({ ok: true });
 });

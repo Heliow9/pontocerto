@@ -1,3 +1,5 @@
+// These regression tests exercise the existing workflow with a fully enabled contract.
+vi.mock("../apps/api/src/services/entitlements.service.js",()=>({entitlements:async()=>({features:{whatsapp:true,branches:true,offline:true,pwa:true,android:true,erp:true,logs:true}})}));
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
   query: vi.fn(),

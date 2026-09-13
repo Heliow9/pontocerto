@@ -107,16 +107,16 @@ async function validateLocations(tenantId: number, companyId: number, locationId
   return rows.length === locationIds.length ? null : "Um ou mais locais de trabalho são inválidos para a empresa selecionada.";
 }
 
-async function enforceEmployeePlanLimit(tenantId: number) {
-  const [plans] = await pool.query<any[]>(
-    `SELECT p.max_employees, s.status
-       FROM subscriptions s JOIN plans p ON p.id=s.plan_id
+async function enforceEmployeePlanLimit(tenantId: number, db:any=pool) {
+  const [plans] = await db.query(
+    `SELECT COALESCE(tc.max_employees,p.max_employees) AS max_employees, s.status
+       FROM subscriptions s JOIN plans p ON p.id=s.plan_id LEFT JOIN tenant_contracts tc ON tc.tenant_id=s.tenant_id
       WHERE s.tenant_id=? ORDER BY s.id DESC LIMIT 1`,
     [tenantId]
   );
   const plan = plans[0];
   if (!plan || plan.max_employees == null || !["TRIAL", "ACTIVE"].includes(plan.status)) return null;
-  const [counts] = await pool.query<any[]>(
+  const [counts] = await db.query(
     "SELECT COUNT(*) AS total FROM employees WHERE tenant_id=? AND active=1",
     [tenantId]
   );
@@ -142,6 +142,8 @@ employeesRouter.post(
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      await conn.query("SELECT id FROM tenants WHERE id=? FOR UPDATE",[req.auth!.tenantId]);
+      if(e.active){const limit=await enforceEmployeePlanLimit(req.auth!.tenantId,conn);if(limit)throw Object.assign(new Error(limit),{status:403});}
       const [result] = await conn.query<any>(
         `INSERT INTO employees
          (tenant_id, company_id, name, cpf, pis, registration_number, admission_date, ctps,
@@ -208,6 +210,8 @@ employeesRouter.put(
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
+      await conn.query("SELECT id FROM tenants WHERE id=? FOR UPDATE",[req.auth!.tenantId]);
+      if(e.active&&!beforeRows[0].active){const limit=await enforceEmployeePlanLimit(req.auth!.tenantId,conn);if(limit)throw Object.assign(new Error(limit),{status:403});}
       await conn.query(
         `UPDATE employees SET company_id=?, name=?, cpf=?, pis=?, registration_number=?, admission_date=?,
           ctps=?, position_name=?, department_name=?, group_id=?, work_schedule_id=?, biometric_exempt=?, active=?, updated_at=${BRASILIA_NOW_SQL}

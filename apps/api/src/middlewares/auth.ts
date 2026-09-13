@@ -1,3 +1,4 @@
+import { requireRole } from "./require-role.js";
 import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
@@ -32,7 +33,7 @@ export async function authMiddleware(
           .status(401)
           .json({ message: "Sessão encerrada. Entre novamente." });
       req.auth = session;
-      return next();
+      return authorize(req,res,next);
     } catch (error) {
       // A database outage must not turn into a logout on the client.
       return next(error);
@@ -40,8 +41,13 @@ export async function authMiddleware(
   }
   try {
     req.auth = jwt.verify(token, env.JWT_SECRET) as TokenPayload;
-    return next();
+    return authorize(req,res,next);
   } catch {
     return res.status(401).json({ message: "Token inválido ou expirado." });
   }
+}
+
+function authorize(req:Request,res:Response,next:NextFunction){
+  if(req.baseUrl==="/auth")return next();
+  return requireRole(req.auth!.role)(req,res,next);
 }

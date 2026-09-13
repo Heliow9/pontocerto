@@ -1,3 +1,4 @@
+import {featureGate} from "../middlewares/commercial-access.js";
 import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db/pool.js";
@@ -10,6 +11,7 @@ export const logsRouter = Router();
 logsRouter.use(
   authMiddleware,
   requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH"),
+  featureGate("logs"),
   (_req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
     next();

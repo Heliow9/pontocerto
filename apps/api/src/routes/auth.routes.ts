@@ -5,6 +5,7 @@ import { pool } from "../db/pool.js";
 import { signToken } from "../utils/jwt.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { passwordRouter } from "./password.routes.js";
+import { defaultSupervisorPermissions,readJson } from "../services/commercial-rules.js";
 import {
   createSession,
   isSessionToken,
@@ -96,5 +97,7 @@ authRouter.get("/me", authMiddleware, async (req, res) => {
       WHERE u.id = ? AND u.tenant_id = ? LIMIT 1`,
     [req.auth!.userId, req.auth!.tenantId],
   );
-  res.json(rows[0] || null);
+  const user=rows[0];
+  if(user?.role==="SUPERVISOR") { const [permissions]=await pool.query<any[]>("SELECT permissions_json FROM user_permissions WHERE tenant_id=? AND user_id=?",[req.auth!.tenantId,req.auth!.userId]);user.permissions=readJson(permissions[0]?.permissions_json,defaultSupervisorPermissions); }
+  res.json(user || null);
 });

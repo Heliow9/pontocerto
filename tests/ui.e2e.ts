@@ -568,6 +568,7 @@ test("dashboard desktop e estados de erro", async ({ page }) => {
     path: "test-results/web-desktop.png",
     fullPage: true,
   });
+  await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
   await page.route("**/dashboard", (route) =>
     route.fulfill({
       status: 503,

@@ -1,3 +1,4 @@
+import {requireFeature} from "../middlewares/commercial-access.js";
 import { Router } from "express";
 import { z } from "zod";
 import multer from "multer";
@@ -257,6 +258,7 @@ timeEntriesRouter.post(
       if (!employee)
         return res.status(404).json({ message: "Funcionário não encontrado." });
 
+      await requireFeature(req.auth!.tenantId,employee.company_id,d.source === "WEB" ? "pwa" : "android");
       const gate = await pool.getConnection();
       const lockName = `pc:punch:${req.auth!.tenantId}:${employee.id}`;
       let locked = false;
@@ -605,6 +607,7 @@ timeEntriesRouter.post("/", async (req, res) => {
   if (!employee)
     return res.status(404).json({ message: "Funcionário não encontrado." });
 
+  await requireFeature(req.auth!.tenantId,employee.company_id,d.source === "WEB" ? "pwa" : "android");
   const policy = await getEmployeeDevicePolicy(
     req.auth!.tenantId,
     employee.company_id,

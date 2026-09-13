@@ -43,6 +43,7 @@ const confirm = (body: any) =>
   request(app).post("/employees/import/confirm").auth(token(), auth).send(body);
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.audit.mockResolvedValue(undefined);
   mocks.query.mockImplementation(async (sql: string) => {
     if (sql.includes("FROM companies")) return [[{ id: 2 }]];
     if (sql.includes("COUNT(*)")) return [[{ total: 0 }]];
@@ -67,7 +68,7 @@ describe("employee import API", () => {
       ).status,
     ).toBe(403);
     expect((await preview(undefined, "9")).status).toBe(422);
-    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.query.mock.calls.filter(([sql]) => !String(sql).includes("FROM users u LEFT JOIN user_permissions"))).toHaveLength(0);
   });
   it("previews without mutation then inserts all rows and associations atomically", async () => {
     const draft = await preview();

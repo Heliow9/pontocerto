@@ -1,3 +1,4 @@
+import { requireFeature } from "../middlewares/commercial-access.js";
 import {
   Router,
   type Request,
@@ -103,6 +104,7 @@ automationRouter.put(
             "Confira as opções e os telefones com DDI e DDD, somente números.",
         });
     const d = parsed.data;
+    if(d.offlineEnabled) await requireFeature(req.auth!.tenantId,id,"offline");
     await pool.query(
       `INSERT INTO company_automation(tenant_id,company_id,overtime_enabled,remote_enabled,offline_enabled,recipients) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE overtime_enabled=VALUES(overtime_enabled),remote_enabled=VALUES(remote_enabled),offline_enabled=VALUES(offline_enabled),recipients=VALUES(recipients)`,
       [
@@ -125,6 +127,7 @@ automationRouter.post(
     if (!(await company(req, id))) return res.sendStatus(404);
     const action = String(req.params.action);
     if (!["connect", "disconnect"].includes(action)) return res.sendStatus(404);
+    if (action === "connect") await requireFeature(req.auth!.tenantId,id,"whatsapp");
     if (!whatsappReady())
       return res
         .status(503)

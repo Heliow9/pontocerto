@@ -1,3 +1,4 @@
+import { requireFeature } from "../middlewares/commercial-access.js";
 import {
   Router,
   type Request,
@@ -60,6 +61,7 @@ async function companyFor(req: Request, companyId: number) {
     "SELECT id, legal_name FROM companies WHERE tenant_id=? AND id=?",
     [req.auth!.tenantId, companyId],
   );
+  if(rows[0]) await requireFeature(req.auth!.tenantId,companyId,"erp");
   return rows[0] || null;
 }
 

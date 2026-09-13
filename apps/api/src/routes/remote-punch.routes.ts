@@ -1,3 +1,5 @@
+import { entitlements } from "../services/entitlements.service.js";
+import { requireFeature } from "../middlewares/commercial-access.js";
 import {
   Router,
   type Request,
@@ -53,6 +55,7 @@ remotePunchRouter.get(
   safe(async (req, res) => {
     const e = await context(req);
     if (!e) return res.sendStatus(403);
+    const contract=await entitlements(req.auth!.tenantId,e.company_id);
     const device = await getEmployeeDevicePolicy(
       req.auth!.tenantId,
       e.company_id,
@@ -60,7 +63,8 @@ remotePunchRouter.get(
     );
     res.json({
       enabled: Boolean(e.remote_enabled),
-      offlineEnabled: Boolean(e.offline_enabled),
+      offlineEnabled: Boolean(e.offline_enabled) && contract.features.offline,
+      pwaEnabled:contract.features.pwa,androidEnabled:contract.features.android,
       device,
       companyId: Number(e.company_id),
       serverTime: new Date().toISOString(),
@@ -129,6 +133,8 @@ remotePunchRouter.post(
               entry_type: existing[0].entry_type,
               replayed: true,
             });
+      await requireFeature(req.auth!.tenantId,e.company_id,d.source === "WEB" ? "pwa" : "android");
+      if(d.offline) await requireFeature(req.auth!.tenantId,e.company_id,"offline");
       if (!e.remote_enabled || (d.offline && !e.offline_enabled))
         return res.status(403).json({
           message:

@@ -12,7 +12,11 @@ import { AccessProvider } from "./components/Access";
 import { Icon } from "./components/Icon";
 import { WorkspaceTools } from "./components/WorkspaceTools";
 
+const SaasPortal = lazy(() => import("./pages/SaasPortal"));
+
 type Page =
+  | "team"
+  | "audit"
   | "dashboard"
   | "companies"
   | "employees"
@@ -26,6 +30,8 @@ type Page =
   | "adjustments"
   | "password";
 const loaders = {
+  team: () => import("./pages/TeamPage").then(m=>({default:m.TeamPage})),
+  audit: () => import("./pages/AuditPage").then(m=>({default:m.AuditPage})),
   password: () =>
     import("./pages/PasswordPage").then((m) => ({ default: m.PasswordPage })),
   dashboard: () =>
@@ -54,7 +60,7 @@ const loaders = {
       default: m.AdjustmentsPage,
     })),
 };
-const PasswordPage = lazy(loaders.password),
+const TeamPage = lazy(loaders.team), AuditPage = lazy(loaders.audit), PasswordPage = lazy(loaders.password),
   DashboardPage = lazy(loaders.dashboard),
   CompaniesPage = lazy(loaders.companies),
   EmployeesPage = lazy(loaders.employees),
@@ -70,6 +76,8 @@ function preload(page: Page) {
   void loaders[page]().catch(() => {});
 }
 const nav: { id: Page; label: string; group: string }[] = [
+  {id:"team",label:"Supervisores",group:"Administração"},
+  {id:"audit",label:"Auditoria",group:"Administração"},
   { id: "password", label: "Alterar senha", group: "Minha conta" },
   { id: "dashboard", label: "Visão geral", group: "Operação" },
   { id: "points", label: "Marcações", group: "Operação" },
@@ -167,10 +175,13 @@ export function App() {
   const visible = nav.filter(
     (n) =>
       (n.id !== "saas" || user?.role === "SUPER_ADMIN") &&
-      (n.id !== "settings" || canAdmin),
+      (n.id !== "settings" || canAdmin) &&
+      (n.id !== "team" || user?.role === "TENANT_ADMIN") &&
+      (n.id !== "audit" || ["TENANT_ADMIN","RH","SUPERVISOR"].includes(user?.role)) &&
+      (user?.role !== "SUPERVISOR" || !user.permissions || n.id === "password" || ["read","write"].includes(user.permissions[n.id === "audit" ? "logs" : n.id])),
   );
   useEffect(() => {
-    if (user && !visible.some((n) => n.id === page)) go("dashboard");
+    if (user && user.role !== "SUPER_ADMIN" && !visible.some((n) => n.id === page)) go(visible[0]?.id || "password");
   }, [user, page]);
   async function login(e: React.FormEvent) {
     e.preventDefault();
@@ -321,7 +332,10 @@ export function App() {
         </button>
       </main>
     );
+  if (user.role === "SUPER_ADMIN") return <RouteErrorBoundary><Suspense fallback={<PageSkeleton/>}><SaasPortal logout={logout}/></Suspense></RouteErrorBoundary>;
   const pages: Record<Page, React.ReactNode> = {
+    team: <TeamPage/>,
+    audit: <AuditPage/>,
     password: <PasswordPage />,
     dashboard: <DashboardPage />,
     companies: <CompaniesPage notify={notify} />,
@@ -363,7 +377,7 @@ export function App() {
     </nav>
   );
   return (
-    <AccessProvider role={user.role}>
+    <AccessProvider role={user.role} permissions={user.permissions} page={page}>
       <div className="app-shell">
         <a className="skip-link" href="#main-content">
           Ir para o conteúdo

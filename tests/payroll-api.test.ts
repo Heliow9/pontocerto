@@ -1,3 +1,5 @@
+// These regression tests exercise the existing workflow with a fully enabled contract.
+vi.mock("../apps/api/src/services/entitlements.service.js",()=>({entitlements:async()=>({features:{whatsapp:true,branches:true,offline:true,pwa:true,android:true,erp:true,logs:true}})}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
@@ -63,6 +65,7 @@ function send(
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.audit.mockResolvedValue(undefined);
   mocks.query.mockImplementation(async (sql: string) => {
     if (sql.includes("FROM companies"))
       return [[{ id: 2, legal_name: "Empresa teste" }]];
@@ -86,7 +89,7 @@ describe("payroll export API", () => {
     expect(
       (await request(app).post("/reports/payroll/generate").send(body)).status,
     ).toBe(401);
-    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.query.mock.calls.filter(([sql]) => !String(sql).includes("FROM users u LEFT JOIN user_permissions"))).toHaveLength(0);
   });
   it.each(["FUNCIONARIO", "SUPERVISOR", "GESTOR"])(
     "denies payroll access to %s",
@@ -99,12 +102,12 @@ describe("payroll export API", () => {
             .auth(token(role), { type: "bearer" })
         ).status,
       ).toBe(403);
-      expect(mocks.query).not.toHaveBeenCalled();
+      expect(mocks.query.mock.calls.filter(([sql]) => !String(sql).includes("FROM users u LEFT JOIN user_permissions"))).toHaveLength(0);
     },
   );
   it("rejects a company outside the authenticated company scope before querying", async () => {
     expect((await send(body, "TENANT_ADMIN", 9)).status).toBe(404);
-    expect(mocks.query).not.toHaveBeenCalled();
+    expect(mocks.query.mock.calls.filter(([sql]) => !String(sql).includes("FROM users u LEFT JOIN user_permissions"))).toHaveLength(0);
   });
   it("fails the entire export when one selected employee is not accessible", async () => {
     mocks.query

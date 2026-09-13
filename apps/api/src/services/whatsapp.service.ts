@@ -1,3 +1,4 @@
+import { entitlements } from "./entitlements.service.js";
 import makeWASocket, {
   BufferJSON,
   DisconnectReason,
@@ -312,9 +313,11 @@ export async function runWhatsAppTick() {
     );
     for (const item of timedOut)
       logWhatsApp(Number(item.tenant_id), Number(item.company_id), "WHATSAPP_ACK_TIMEOUT", "WhatsApp não confirmou a entrega dentro do prazo esperado.", { level: "WARNING", recipient: item.recipient, employeeId: Number(item.employee_id), details: { messageId: item.message_id } });
-    const [companies] = await pool.query<any[]>(
+    const [configuredCompanies] = await pool.query<any[]>(
       `SELECT a.* FROM company_automation a JOIN companies c ON c.id=a.company_id AND c.tenant_id=a.tenant_id AND c.active=1 JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE' WHERE a.whatsapp_enabled=1 AND a.overtime_enabled=1`,
     );
+    const companies:any[]=[];
+    for(const c of configuredCompanies) if((await entitlements(Number(c.tenant_id),Number(c.company_id))).features.whatsapp) companies.push(c);
     const active = new Set(
       companies.map((c) => `${c.tenant_id}:${c.company_id}`),
     );

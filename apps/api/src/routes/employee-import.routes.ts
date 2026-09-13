@@ -77,7 +77,7 @@ async function validate(
     [req.auth!.tenantId, companyId],
   );
   const [plans] = await db.query(
-    "SELECT p.max_employees FROM subscriptions s JOIN plans p ON p.id=s.plan_id WHERE s.tenant_id=? AND s.status IN ('TRIAL','ACTIVE') ORDER BY s.id DESC LIMIT 1",
+    "SELECT COALESCE(tc.max_employees,p.max_employees) AS max_employees FROM subscriptions s JOIN plans p ON p.id=s.plan_id LEFT JOIN tenant_contracts tc ON tc.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.status IN ('TRIAL','ACTIVE') ORDER BY s.id DESC LIMIT 1",
     [req.auth!.tenantId],
   );
   const [counts] = await db.query(
