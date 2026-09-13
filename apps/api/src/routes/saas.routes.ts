@@ -3,6 +3,7 @@ import { createTenantInTransaction } from "../services/tenant-provisioning.servi
 import { commercialRouter,safe } from "./saas-commercial.routes.js";
 import { auditList } from "./team.routes.js";
 import { proposalsRouter } from "./proposals.routes.js";
+import { contractsRouter } from "./contracts.routes.js";
 import { writeAudit } from "../utils/audit.js";
 import { z } from "zod";
 import { pool } from "../db/pool.js";
@@ -14,6 +15,7 @@ export const saasRouter = Router();
 saasRouter.use(authMiddleware, requireRole("SUPER_ADMIN"));
 saasRouter.use(commercialRouter);
 saasRouter.use("/proposals",proposalsRouter);
+saasRouter.use("/contracts",contractsRouter);
 saasRouter.get("/audit",safe((req,res)=>auditList(req,res,true)));
 
 saasRouter.get("/plans", async (_req, res) => {

@@ -249,7 +249,7 @@ export function CompaniesPage({
                 {items.map((c) => (
                   <tr key={c.id}>
                     <td>
-                      <strong>{c.trade_name || c.legal_name}</strong>
+                      <strong>{c.trade_name || c.legal_name}</strong>{" "}<Badge tone={c.company_type === "MATRIX" ? "success" : "neutral"}>{c.company_type === "MATRIX" ? "Matriz" : "Filial"}</Badge>
                       <div className="muted">{c.legal_name}</div>
                     </td>
                     <td>{c.cnpj || "-"}</td>

@@ -2,8 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../api";
 import { apiMessage } from "../utils";
 import { PageSkeleton } from "../components/PageSkeleton";
-export const labels:Record<string,string>={whatsapp:"WhatsApp",branches:"Filiais",offline:"Ponto offline",pwa:"PWA iPhone",android:"Android",erp:"Exportação ERP",logs:"Logs"};
-export const modules:Record<string,string>={dashboard:"Visão geral",companies:"Empresas",employees:"Funcionários",schedules:"Escalas e jornadas",locations:"Locais",points:"Marcações",occurrences:"Ocorrências",adjustments:"Ajustes",reports:"Relatórios",logs:"Auditoria e logs"};
+export const labels:Record<string,string>={whatsapp:"WhatsApp",branches:"Filiais",offline:"Ponto offline",pwa:"PWA iPhone",android:"Android",erp:"Exportação ERP",logs:"Logs do Sistema",audit:"Auditoria de Usuários",overtime:"Horas Extras"};
+export const modules:Record<string,string>={dashboard:"Visão geral",companies:"Empresas",employees:"Funcionários",schedules:"Escalas e jornadas",locations:"Locais",points:"Marcações",occurrences:"Ocorrências",adjustments:"Ajustes",reports:"Relatórios",logs:"Logs do Sistema",audit:"Auditoria de Usuários",whatsapp:"WhatsApp",overtime:"Horas Extras"};
 export const defaults=Object.fromEntries(Object.keys(labels).map(k=>[k,true]));
 export const money=(v:unknown)=>Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 export function Field({label,children}:{label:string;children:ReactNode}){return <label className="commercial-field"><span>{label}</span>{children}</label>;}

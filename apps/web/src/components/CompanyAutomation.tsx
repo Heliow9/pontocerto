@@ -11,6 +11,7 @@ type Settings = {
   whatsappEnabled?: boolean;
   whatsapp?: any;
   alerts?: any[];
+  features?: Record<string, boolean>;
 };
 const labels: Record<string, string> = {
   DISCONNECTED: "Desconectado",
@@ -93,6 +94,9 @@ export function CompanyAutomation({ id }: { id: number }) {
     }
   }
   const whatsappState = status?.status || "DISCONNECTED";
+  const overtimeContracted = data?.features?.overtime !== false;
+  const whatsappContracted = data?.features?.whatsapp !== false;
+  const offlineContracted = data?.features?.offline !== false;
   const { showConnect, showDisconnect } = whatsappActionVisibility(
     whatsappState,
     Boolean(status?.ready),
@@ -113,12 +117,14 @@ export function CompanyAutomation({ id }: { id: number }) {
             <input
               type="checkbox"
               checked={data.overtimeEnabled}
+              disabled={!overtimeContracted}
               onChange={(e) =>
                 setData({ ...data, overtimeEnabled: e.target.checked })
               }
             />{" "}
             Ativar acompanhamento mensal e alertas de horas extras
           </label>
+          {!overtimeContracted && <p role="status">Recurso de horas extras não contratado. Consulte seu plano ou entre em contato com o Ponto Certo.</p>}
           <p>
             Configure a quantidade no grupo ou funcionário. Avisos em 50%, 100%
             e ao ultrapassar 100%, sem bloquear o ponto. Os avisos consideram os
@@ -146,7 +152,7 @@ export function CompanyAutomation({ id }: { id: number }) {
           <label>
             <input
               type="checkbox"
-              disabled={!data.remoteEnabled}
+              disabled={!data.remoteEnabled || !offlineContracted}
               checked={data.offlineEnabled}
               onChange={(e) =>
                 setData({ ...data, offlineEnabled: e.target.checked })
@@ -154,6 +160,7 @@ export function CompanyAutomation({ id }: { id: number }) {
             />{" "}
             Permitir capturar offline e enviar depois (PWA e Android)
           </label>
+          {!offlineContracted && <p role="status">Ponto Offline não contratado.</p>}
           <p>
             Offline exige acesso prévio com internet. O horário vem do aparelho
             e fica identificado na conferência. As exigências de vínculo e
@@ -236,14 +243,15 @@ export function CompanyAutomation({ id }: { id: number }) {
             Salvar automação da empresa
           </button>
           <h4>Conexão WhatsApp</h4>
-          <p>
+          {!whatsappContracted && <p role="status">Recurso WhatsApp não contratado. Consulte seu plano ou entre em contato com o Ponto Certo.</p>}
+          {whatsappContracted && <p>
             {labels[status?.status] || "Desconectado"}{" "}
             {status?.phone ? `· ${status.phone}` : ""}
-          </p>
-          {!status?.ready && (
+          </p>}
+          {whatsappContracted && !status?.ready && (
             <p>Serviço aguardando configuração no servidor.</p>
           )}
-          {status?.qr && (
+          {whatsappContracted && status?.qr && (
             <img
               src={status.qr}
               alt="QR Code para conectar o WhatsApp desta empresa"
@@ -256,7 +264,7 @@ export function CompanyAutomation({ id }: { id: number }) {
             conexão usa Baileys e pode exigir novo pareamento. Ao conectar, os
             alertas serão enviados aos números salvos acima.
           </p>
-          {showConnect && (
+          {whatsappContracted && showConnect && (
             <button
               type="button"
               className="secondary"
@@ -266,7 +274,7 @@ export function CompanyAutomation({ id }: { id: number }) {
               Conectar WhatsApp
             </button>
           )}{" "}
-          {showDisconnect && (
+          {whatsappContracted && showDisconnect && (
             <button
               type="button"
               className="ghost"
@@ -289,7 +297,7 @@ export function CompanyAutomation({ id }: { id: number }) {
           <button
             type="button"
             className="secondary"
-            disabled={busy}
+            disabled={busy || !overtimeContracted}
             onClick={() => void report()}
           >
             Atualizar totalizador

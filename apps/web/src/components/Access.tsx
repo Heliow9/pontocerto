@@ -1,4 +1,4 @@
-import { createContext, useContext, ReactNode } from "react";
-const Access = createContext<{role:string;permissions?:Record<string,string>;page?:string}>({role:"SUPERVISOR"});
-export function AccessProvider({role,permissions,page,children}:{role:string;permissions?:Record<string,string>;page?:string;children:ReactNode}){return <Access.Provider value={{role,permissions,page}}>{children}</Access.Provider>;}
-export function useAccess(){const {role,permissions,page}=useContext(Access);const writable=role==="SUPERVISOR"&&permissions?.[page||""]==="write";return {role,canManage:writable||["TENANT_ADMIN","RH"].includes(role),canAdjust:writable||["TENANT_ADMIN","RH","GESTOR"].includes(role)};}
+import {createContext,useContext,type ReactNode} from "react";
+const Access=createContext<{role:string;permissions?:Record<string,string>;sensitivePermissions?:Record<string,boolean>;page?:string}>({role:"SUPERVISOR"});
+export function AccessProvider({role,permissions,sensitivePermissions,page,children}:{role:string;permissions?:Record<string,string>;sensitivePermissions?:Record<string,boolean>;page?:string;children:ReactNode}){return <Access.Provider value={{role,permissions,sensitivePermissions,page}}>{children}</Access.Provider>;}
+export function useAccess(){const {role,permissions,sensitivePermissions,page}=useContext(Access);const writable=role==="SUPERVISOR"&&permissions?.[page||""]==="write";const admin=["TENANT_ADMIN","RH"].includes(role);return {role,canManage:writable||admin,canAdjust:writable||admin||role==="GESTOR",can:(permission:string)=>role!=="SUPERVISOR"||sensitivePermissions?.[permission]===true};}

@@ -1,4 +1,5 @@
 import { requireFeature } from "../middlewares/commercial-access.js";
+import { entitlements } from "../services/entitlements.service.js";
 import {
   Router,
   type Request,
@@ -75,18 +76,20 @@ automationRouter.get(
       [req.auth!.tenantId, id],
     );
     const s = rows[0];
+    const access=await entitlements(req.auth!.tenantId,id);
     const [alerts] = await pool.query<any[]>(
       "SELECT id,employee_id,month_key,threshold_key,recipient,status,error_code,next_attempt_at,attempt_count,created_at,sent_at,message_id,message_text FROM overtime_alerts WHERE tenant_id=? AND company_id=? ORDER BY id DESC LIMIT 100",
       [req.auth!.tenantId, id],
     );
     res.json({
-      overtimeEnabled: Boolean(s?.overtime_enabled),
+      overtimeEnabled: Boolean(s?.overtime_enabled) && Boolean(access.features.overtime),
       remoteEnabled: Boolean(s?.remote_enabled),
-      offlineEnabled: Boolean(s?.offline_enabled),
+      offlineEnabled: Boolean(s?.offline_enabled) && Boolean(access.features.offline),
       recipients: JSON.parse(s?.recipients || "[]"),
-      whatsappEnabled: Boolean(s?.whatsapp_enabled),
-      whatsapp: whatsappStatus(req.auth!.tenantId, id),
+      whatsappEnabled: Boolean(s?.whatsapp_enabled) && Boolean(access.features.whatsapp),
+      whatsapp: access.features.whatsapp ? whatsappStatus(req.auth!.tenantId, id) : {status:"DISCONNECTED",ready:false,qr:null},
       alerts,
+      features: access.features,
     });
   }),
 );
@@ -104,6 +107,7 @@ automationRouter.put(
             "Confira as opções e os telefones com DDI e DDD, somente números.",
         });
     const d = parsed.data;
+    if(d.overtimeEnabled) await requireFeature(req.auth!.tenantId,id,"overtime");
     if(d.offlineEnabled) await requireFeature(req.auth!.tenantId,id,"offline");
     await pool.query(
       `INSERT INTO company_automation(tenant_id,company_id,overtime_enabled,remote_enabled,offline_enabled,recipients) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE overtime_enabled=VALUES(overtime_enabled),remote_enabled=VALUES(remote_enabled),offline_enabled=VALUES(offline_enabled),recipients=VALUES(recipients)`,
@@ -127,7 +131,10 @@ automationRouter.post(
     if (!(await company(req, id))) return res.sendStatus(404);
     const action = String(req.params.action);
     if (!["connect", "disconnect"].includes(action)) return res.sendStatus(404);
-    if (action === "connect") await requireFeature(req.auth!.tenantId,id,"whatsapp");
+    if (action === "connect") {
+      await requireFeature(req.auth!.tenantId,id,"whatsapp");
+      await requireFeature(req.auth!.tenantId,id,"overtime");
+    }
     if (!whatsappReady())
       return res
         .status(503)
@@ -161,6 +168,7 @@ automationRouter.get(
   safe(async (req, res) => {
     const id = Number(req.params.id);
     if (!(await company(req, id))) return res.sendStatus(404);
+    await requireFeature(req.auth!.tenantId,id,"overtime");
     const month = String(
       req.query.month ||
         new Date(Date.now() - 3 * 3600000).toISOString().slice(0, 7),
@@ -193,6 +201,7 @@ automationRouter.get(
   safe(async (req, res) => {
     const e = await entity(req);
     if (!e) return res.sendStatus(404);
+    await requireFeature(req.auth!.tenantId,Number(e.company_id),"overtime");
     const [rows] = await pool.query<any[]>(
       "SELECT monthly_minutes FROM overtime_references WHERE tenant_id=? AND company_id=? AND entity_kind=? AND entity_id=?",
       [req.auth!.tenantId, e.company_id, e.kind, e.id],
@@ -216,6 +225,7 @@ automationRouter.put(
   safe(async (req, res) => {
     const e = await entity(req);
     if (!e) return res.sendStatus(404);
+    await requireFeature(req.auth!.tenantId,Number(e.company_id),"overtime");
     const parsed = z
       .object({ minutes: z.number().int().min(1).max(44640).nullable() })
       .safeParse(req.body);

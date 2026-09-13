@@ -178,7 +178,7 @@ export function App() {
       (n.id !== "settings" || canAdmin) &&
       (n.id !== "team" || user?.role === "TENANT_ADMIN") &&
       (n.id !== "audit" || ["TENANT_ADMIN","RH","SUPERVISOR"].includes(user?.role)) &&
-      (user?.role !== "SUPERVISOR" || !user.permissions || n.id === "password" || ["read","write"].includes(user.permissions[n.id === "audit" ? "logs" : n.id])),
+      (user?.role !== "SUPERVISOR" || n.id === "password" || ["read","write"].includes(user?.permissions?.[n.id === "audit" ? "audit" : n.id] || "none")),
   );
   useEffect(() => {
     if (user && user.role !== "SUPER_ADMIN" && !visible.some((n) => n.id === page)) go(visible[0]?.id || "password");
@@ -377,7 +377,7 @@ export function App() {
     </nav>
   );
   return (
-    <AccessProvider role={user.role} permissions={user.permissions} page={page}>
+    <AccessProvider role={user.role} permissions={user.permissions} sensitivePermissions={user.sensitivePermissions} page={page}>
       <div className="app-shell">
         <a className="skip-link" href="#main-content">
           Ir para o conteúdo

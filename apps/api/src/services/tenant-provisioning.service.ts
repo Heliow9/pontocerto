@@ -8,8 +8,8 @@ export async function createTenantInTransaction(conn:any,d:any) {
     );
     const tenantId = Number(tenantResult.insertId);
     const [companyResult] = await conn.query(
-      `INSERT INTO companies (tenant_id, legal_name, trade_name, cnpj, active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, 1, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
+      `INSERT INTO companies (tenant_id, company_type, legal_name, trade_name, cnpj, active, created_at, updated_at)
+       VALUES (?, 'MATRIX', ?, ?, ?, 1, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
       [tenantId, d.companyName, d.companyName, d.cnpj || null]
     );
     const companyId = Number(companyResult.insertId);

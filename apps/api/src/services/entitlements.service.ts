@@ -28,9 +28,9 @@ export async function checkEmployeeCapacity(tenantId:number,additional:number,db
     throw Object.assign(new Error(`Limite contratado de ${contract.maxEmployees} funcionários atingido.`),{status:403});
 }
 export async function checkBranchCapacity(tenantId:number,db:any=pool) {
-  const [companies]=await db.query("SELECT id FROM companies WHERE tenant_id=? AND active=1 ORDER BY id",[tenantId]);
-  if(!companies.length)return;
-  const contract=await entitlements(tenantId,Number(companies[0].id),db);
-  if(!contract.features.branches || (contract.maxBranches!=null && companies.length>=Number(contract.maxBranches)+1))
-    throw Object.assign(new Error("Cadastro de filial não liberado ou limite de filiais atingido. Consulte o administrador SaaS."),{status:403});
+  const contract=await entitlements(tenantId,null,db);
+  if(!contract.features.branches) throw Object.assign(new Error("Cadastro de filial não liberado no contrato desta empresa. Consulte o administrador SaaS."),{status:403});
+  const [[row]]=await db.query("SELECT COUNT(*) AS total FROM companies WHERE tenant_id=? AND company_type='BRANCH' AND active=1",[tenantId]);
+  if(contract.maxBranches!=null && Number(row.total)>=Number(contract.maxBranches))
+    throw Object.assign(new Error(`Limite contratado de ${contract.maxBranches} filiais atingido.`),{status:403});
 }

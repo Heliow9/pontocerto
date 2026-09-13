@@ -1,5 +1,6 @@
 export type Company = {
   id: number;
+  company_type?: "MATRIX" | "BRANCH";
   legal_name: string;
   trade_name?: string | null;
   cnpj?: string | null;

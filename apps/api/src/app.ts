@@ -2,6 +2,7 @@ import "express-async-errors";
 import { logsRouter } from "./routes/logs.routes.js";
 import { teamRouter,auditRouter } from "./routes/team.routes.js";
 import { writeSystemLog } from "./services/system-log.service.js";
+import { writeAudit } from "./utils/audit.js";
 import { notificationsRouter } from "./routes/notifications.routes.js";
 import { automationRouter } from "./routes/automation.routes.js";
 import { remotePunchRouter } from "./routes/remote-punch.routes.js";
@@ -36,6 +37,7 @@ app.use("/remote-punch",remotePunchRouter);
 app.get("/",(_req,res)=>res.json({name:"Ponto Certo SaaS API",version:"0.4.4",multiTenant:true,security:"SELFIE+DEVICE_BIOMETRIC+GEOFENCE+SCHEDULE"}));
 app.use("/adjustments",adjustmentsRouter);app.use("/health",healthRouter);app.use("/auth",authRouter);app.use("/dashboard",dashboardRouter);app.use("/companies",companiesRouter);app.use("/employees",employeesRouter);app.use("/groups",groupsRouter);app.use("/notifications",notificationsRouter);app.use("/schedules",schedulesRouter);app.use("/time-entries",timeEntriesRouter);app.use("/holidays",holidaysRouter);app.use("/absences",absencesRouter);app.use("/calculations",calculationsRouter);app.use("/reports",reportsRouter);app.use("/settings",settingsRouter);app.use("/saas",saasRouter);app.use("/locations",locationsRouter);app.use("/devices",devicesRouter);
 app.use((err:any,req:express.Request,res:express.Response,_next:express.NextFunction)=>{
+  if(req.auth && !["GET","HEAD","OPTIONS"].includes(req.method)) void writeAudit(req,"REQUEST_ERROR","request",null,undefined,undefined,"ERROR",{path:req.originalUrl,status:err?.status||500,errorName:err?.name||"Error",errorCode:err?.code||null,message:err?.message||"Falha na solicitação"}).catch(()=>{});
   if(err?.name==="ZodError")return res.status(400).json({message:"Confira os campos informados.",issues:err.flatten()});
   if(err?.status)return res.status(err.status).json({message:err.message});
   if(err?.code==="ER_DUP_ENTRY")return res.status(409).json({message:"Este registro já existe. Confira CNPJ, e-mail e identificadores."});

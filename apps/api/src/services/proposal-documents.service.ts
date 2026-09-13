@@ -9,7 +9,7 @@ import PizZip from "pizzip";
 import {readJson,type Features} from "./commercial-rules.js";
 const exec=promisify(execFile);
 const money=(value:number)=>new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL"}).format(value);
-const labels:Record<keyof Features,string>={whatsapp:"WhatsApp",branches:"Filiais",offline:"Ponto offline",pwa:"PWA iPhone",android:"Android",erp:"Exportação ERP",logs:"Logs"};
+const labels:Record<keyof Features,string>={whatsapp:"WhatsApp",branches:"Filiais",offline:"Ponto offline",pwa:"PWA iPhone",android:"Android",erp:"Exportação ERP",logs:"Logs",audit:"Auditoria",overtime:"Horas extras"};
 export async function proposalDocx(proposal:any){
   const base=path.dirname(fileURLToPath(import.meta.url));
   let template:Buffer|undefined;

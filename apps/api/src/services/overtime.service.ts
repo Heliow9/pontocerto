@@ -2,6 +2,7 @@ import { pool } from "../db/pool.js";
 import { processPeriod } from "./calculation.service.js";
 import { hoursText, reachedThresholds } from "./overtime-rules.js";
 import { collectLiveOvertimeAlerts } from "./live-overtime.service.js";
+import { entitlements } from "./entitlements.service.js";
 
 export async function overtimeSummary(
   tenantId: number,
@@ -53,6 +54,8 @@ export async function collectOvertimeAlerts(now = Date.now()) {
     `SELECT a.*,c.legal_name,p.schedule_early_margin_minutes FROM company_automation a JOIN companies c ON c.id=a.company_id AND c.tenant_id=a.tenant_id AND c.active=1 JOIN tenants t ON t.id=a.tenant_id AND t.status='ACTIVE' LEFT JOIN company_profiles p ON p.tenant_id=c.tenant_id AND p.company_id=c.id WHERE a.overtime_enabled=1`,
   );
   for (const company of companies) {
+    const access=await entitlements(Number(company.tenant_id),Number(company.company_id));
+    if(!access.features.overtime) continue;
     await pool.query(
       `UPDATE overtime_alerts a LEFT JOIN employees e ON e.id=a.employee_id AND e.tenant_id=a.tenant_id AND e.company_id=a.company_id SET a.status='CANCELED' WHERE a.tenant_id=? AND a.company_id=? AND a.status='PENDING' AND (e.id IS NULL OR e.active=0)`,
       [company.tenant_id, company.company_id],
