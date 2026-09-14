@@ -5,6 +5,7 @@ import {
   DeleteFacesCommand,
   SearchFacesByImageCommand,
 } from "@aws-sdk/client-rekognition";
+import type { Pool, PoolConnection } from "mysql2/promise";
 import { env } from "../config/env.js";
 import { pool } from "../db/pool.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
@@ -78,7 +79,7 @@ export async function indexEmployeeFace(args: {
   companyId: number;
   employeeId: number;
   image: Buffer;
-  db?: any;
+  db?: Pool | PoolConnection;
 }) {
   validateFaceImage(args.image);
   const db = args.db || pool;
@@ -164,7 +165,7 @@ export async function removeEmployeeFaceIndex(args: {
   tenantId: number;
   companyId: number;
   employeeId: number;
-  db?: any;
+  db?: Pool | PoolConnection;
 }) {
   const db = args.db || pool;
   const [rows] = await db.query<any[]>(
