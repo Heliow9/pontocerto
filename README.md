@@ -2,6 +2,10 @@
 
 SaaS multi-tenant de gestão de jornada com React, Expo/React Native, Node.js/Express e MySQL.
 
+## Foto opcional e validação facial
+
+O cadastro do funcionário permite capturar, enviar, substituir e remover uma foto de referência. Quando há foto cadastrada, a API compara a selfie do ponto com ela usando AWS Rekognition; sem foto, mantém o fluxo atual. Veja [configuração AWS, permissões e atualização do servidor](docs/FACE_PHOTO_AWS.md).
+
 ## Ponto Certo 2.0 — reconhecimento facial AWS
 
 A versão 2.0 reintroduz identificação facial de forma integrada à arquitetura atual: o RH pode cadastrar o rosto pela câmera ou por imagem e, quando a política da empresa estiver ativa, a selfie do ponto é validada no Amazon Rekognition antes da marcação ser gravada. O fluxo funciona no registro normal e na sincronização do ponto remoto/offline.

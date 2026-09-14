@@ -1,3 +1,4 @@
+vi.mock("../apps/api/src/services/face.service.js",()=>({compareEmployeeFace:mocks.face}));
 // These regression tests exercise the existing workflow with a fully enabled contract.
 vi.mock("../apps/api/src/services/entitlements.service.js",()=>({entitlements:async()=>({features:{whatsapp:true,branches:true,offline:true,pwa:true,android:true,erp:true,logs:true}})}));
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -5,6 +6,7 @@ import express from "express";
 import request from "supertest";
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
+  face: vi.fn(),
   getConnection: vi.fn(),
   connQuery: vi.fn(),
   begin: vi.fn(),
@@ -36,7 +38,7 @@ vi.mock("../apps/api/src/services/schedule-guard.service.js", () => ({
 }));
 vi.mock("../apps/api/src/services/device-biometric.service.js", () => ({
   validateEmployeeDevice: mocks.device,
-  getEmployeeDevicePolicy: vi.fn(),
+  getEmployeeDevicePolicy: async () => ({ requireDeviceBiometric: false, requireRegisteredDevice: false }),
 }));
 vi.mock("../apps/api/src/services/selfie.service.js", () => ({
   saveTimeEntrySelfie: mocks.saveSelfie,
@@ -60,7 +62,7 @@ app.use((req: any, _res, next) => {
 app.use("/time-entries", timeEntriesRouter);
 app.use("/adjustments", adjustmentsRouter);
 app.use((err: any, _req: any, res: any, _next: any) =>
-  res.status(500).json({ message: "Erro de teste" }),
+  res.status(err.status || 500).json({ message: "Erro de teste" }),
 );
 const entry = {
   id: 99,
@@ -234,4 +236,24 @@ describe("solicitações", () => {
     expect(mocks.rollback).toHaveBeenCalledOnce();
     expect(mocks.commit).not.toHaveBeenCalled();
   });
+});
+
+it("blocks registered employees on facial mismatch without saving a punch",async()=>{
+ const original=mocks.connQuery.getMockImplementation();
+ mocks.connQuery.mockImplementation((sql:string,...args:any[])=>sql.includes("FROM employee_face_images")?Promise.resolve([[{image:Buffer.from("reference")}]]):original!(sql,...args));
+ mocks.face.mockResolvedValue({verified:false,similarity:20,threshold:95,provider:"AWS_REKOGNITION"});
+ const response=await punch();
+ expect(response.status).toBe(403);
+ expect(mocks.commit).not.toHaveBeenCalled();
+ expect(mocks.face).toHaveBeenCalled();
+});
+
+it("legacy endpoint cannot bypass an enrolled face",async()=>{
+ const original=mocks.connQuery.getMockImplementation();
+ mocks.connQuery.mockImplementation((sql:string,...args:any[])=>sql.includes("FROM employee_face_images")?Promise.resolve([[{employee_id:11}]]):original!(sql,...args));
+ const response=await request(app).post("/time-entries").send({});
+ expect(response.status).toBe(403);
+ expect(response.body.code).toBe("SECURE_PUNCH_REQUIRED");
+ expect(mocks.connQuery.mock.calls.some(([sql])=>sql.includes("INSERT INTO time_entries"))).toBe(false);
+ expect(mocks.connQuery.mock.calls[0][0]).toContain("GET_LOCK");
 });

@@ -1,3 +1,4 @@
+vi.mock("../apps/api/src/services/face.service.js",()=>({compareEmployeeFace:m.face}));
 // These regression tests exercise the existing workflow with a fully enabled contract.
 vi.mock("../apps/api/src/services/entitlements.service.js",()=>({entitlements:async()=>({features:{whatsapp:true,branches:true,offline:true,pwa:true,android:true,erp:true,logs:true}})}));
 import { beforeEach, expect, it, vi } from "vitest";
@@ -5,6 +6,7 @@ import express from "express";
 import request from "supertest";
 const m = vi.hoisted(() => ({
   query: vi.fn(),
+  face: vi.fn(),
   conn: vi.fn(),
   commit: vi.fn(),
   rollback: vi.fn(),
@@ -49,7 +51,7 @@ import { remotePunchRouter } from "../apps/api/src/routes/remote-punch.routes";
 const app = express();
 app.use(express.json());
 app.use("/remote-punch", remotePunchRouter);
-app.use((_e: any, _req: any, res: any, _next: any) => res.sendStatus(500));
+app.use((_e: any, _req: any, res: any, _next: any) => res.sendStatus(_e.status || 500));
 const photo = Buffer.concat([
   Buffer.from([255, 216, 255]),
   Buffer.alloc(100),
@@ -203,4 +205,14 @@ it("permite outro tipo de marcação na mesma data lógica", async () => {
       requestKey: "remote-break-12345678",
     });
   expect(response.status).toBe(201);
+});
+
+it("blocks registered employees on facial mismatch without saving a punch",async()=>{
+ const original=m.conn.getMockImplementation();
+ m.conn.mockImplementation((sql:string,...args:any[])=>sql.includes("FROM employee_face_images")?Promise.resolve([[{image:Buffer.from("reference")}]]):original!(sql,...args));
+ m.face.mockResolvedValue({verified:false,similarity:20,threshold:95,provider:"AWS_REKOGNITION"});
+ const response=await request(app).post("/remote-punch").send(payload());
+ expect(response.status).toBe(403);
+ expect(m.commit).not.toHaveBeenCalled();
+ expect(m.face).toHaveBeenCalled();
 });

@@ -3,184 +3,133 @@ import multer from "multer";
 import { pool } from "../db/pool.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { requireRole } from "../middlewares/require-role.js";
-import { env } from "../config/env.js";
-import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 import {
-  enrollFace,
-  faceProviderStatus,
-  revokeFace,
+  assertSingleFace,
+  validateFaceImage,
+  faceError,
 } from "../services/face.service.js";
-import { getEmployeeFacePolicy } from "../services/face-verification.service.js";
+import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 import { writeAudit } from "../utils/audit.js";
 
 export const faceRouter = Router();
-faceRouter.use(authMiddleware);
-
+faceRouter.use(authMiddleware, requireRole("TENANT_ADMIN", "RH"));
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: env.FACE_MAX_IMAGE_MB * 1024 * 1024 },
-  fileFilter(_req, file, cb) {
-    if (["image/jpeg", "image/png"].includes(file.mimetype)) return cb(null, true);
-    cb(new Error("Envie uma imagem JPG ou PNG."));
-  },
-});
-
-async function employeeById(tenantId: number, id: number) {
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+}).single("photo");
+async function employee(req: any) {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1)
+    throw faceError("Funcionário inválido.", "EMPLOYEE_NOT_FOUND", 404);
   const [rows] = await pool.query<any[]>(
-    "SELECT id,company_id,name,active FROM employees WHERE id=? AND tenant_id=? LIMIT 1",
-    [id, tenantId],
+    "SELECT id,company_id FROM employees WHERE id=? AND tenant_id=? LIMIT 1",
+    [id, req.auth.tenantId],
   );
-  return rows[0] || null;
+  if (!rows[0])
+    throw faceError("Funcionário não encontrado.", "EMPLOYEE_NOT_FOUND", 404);
+  return rows[0];
 }
-
-async function myEmployee(req: any) {
-  if (!req.auth?.employeeId) return null;
-  return employeeById(req.auth.tenantId, req.auth.employeeId);
+async function withPhotoLock(
+  tenantId: number,
+  employeeId: number,
+  operation: (db: any) => Promise<void>,
+) {
+  const db = await pool.getConnection();
+  const key = "pc:punch:" + tenantId + ":" + employeeId;
+  let locked = false;
+  try {
+    const [rows] = await db.query<any[]>("SELECT GET_LOCK(?,5) AS acquired", [
+      key,
+    ]);
+    locked = Number(rows[0]?.acquired) === 1;
+    if (!locked)
+      throw faceError(
+        "Uma marcação ou alteração de foto está em andamento. Tente novamente.",
+        "FACE_BUSY",
+        409,
+      );
+    await operation(db);
+  } finally {
+    if (locked) await db.query("SELECT RELEASE_LOCK(?)", [key]).catch(() => {});
+    db.release();
+  }
 }
-
-function sendFaceError(res: any, error: any, fallback: string) {
-  return res.status(Number(error?.status || 503)).json({
-    message: error?.message || fallback,
-    code: error?.code || "FACE_PROVIDER_ERROR",
+faceRouter.get("/employee/:id/status", async (req, res) => {
+  const e = await employee(req);
+  const [rows] = await pool.query<any[]>(
+    "SELECT updated_at FROM employee_face_images WHERE tenant_id=? AND employee_id=?",
+    [req.auth!.tenantId, e.id],
+  );
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    enrolled: Boolean(rows[0]),
+    updatedAt: rows[0]?.updated_at || null,
   });
-}
-
-faceRouter.get(
-  "/provider/status",
-  requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH"),
-  async (_req, res) => res.json(faceProviderStatus()),
-);
-
-faceRouter.get("/my/status", async (req, res) => {
-  const employee = await myEmployee(req);
-  if (!employee)
-    return res.status(400).json({ message: "Usuário não vinculado a funcionário." });
-  const policy = await getEmployeeFacePolicy(
-    req.auth!.tenantId,
-    employee.company_id,
-    employee.id,
-  );
-  res.json(policy);
 });
-
-faceRouter.post("/my/enroll", async (_req, res) =>
-  res.status(403).json({
-    message:
-      "Cadastro facial deve ser realizado pelo RH ou administrador da empresa.",
-    code: "FACE_ADMIN_ENROLL_REQUIRED",
-  }),
-);
-
-faceRouter.get(
-  "/employee/:id/status",
-  requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH", "GESTOR", "SUPERVISOR"),
-  async (req, res) => {
-    const id = Number(req.params.id);
-    const employee = await employeeById(req.auth!.tenantId, id);
-    if (!employee)
-      return res.status(404).json({ message: "Funcionário não encontrado." });
-    const policy = await getEmployeeFacePolicy(
-      req.auth!.tenantId,
-      employee.company_id,
-      id,
-    );
-    res.json({ employeeId: id, employeeName: employee.name, ...policy });
-  },
-);
-
+faceRouter.get("/employee/:id/photo", async (req, res) => {
+  const e = await employee(req);
+  const [rows] = await pool.query<any[]>(
+    "SELECT image,mime_type FROM employee_face_images WHERE tenant_id=? AND employee_id=?",
+    [req.auth!.tenantId, e.id],
+  );
+  if (!rows[0])
+    return res.status(404).json({ message: "Foto não cadastrada." });
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.type(rows[0].mime_type).send(rows[0].image);
+});
 faceRouter.post(
-  "/employee/:id/enroll",
-  requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH"),
-  upload.single("faceImage"),
+  "/employee/:id/photo",
+  (req, res, next) =>
+    upload(req, res, (error) =>
+      error
+        ? res
+            .status(400)
+            .json({ message: "Envie uma única foto JPG ou PNG de até 5 MB." })
+        : next(),
+    ),
   async (req, res) => {
-    const id = Number(req.params.id);
-    const employee = await employeeById(req.auth!.tenantId, id);
-    if (!employee || !employee.active)
-      return res.status(404).json({ message: "Funcionário ativo não encontrado." });
+    const e = await employee(req);
     if (!req.file)
-      return res.status(400).json({
-        message: "Tire ou selecione uma foto frontal para cadastrar o rosto.",
-        code: "FACE_IMAGE_REQUIRED",
-      });
-    const [old] = await pool.query<any[]>(
-      "SELECT provider_face_id,status FROM employee_face_profiles WHERE tenant_id=? AND employee_id=? LIMIT 1",
-      [req.auth!.tenantId, id],
-    );
-    try {
-      const enrolled = await enrollFace({
-        tenantId: req.auth!.tenantId,
-        employeeId: id,
-        image: req.file.buffer,
-        oldFaceId: old[0]?.provider_face_id,
-      });
-      await pool.query(
-        `INSERT INTO employee_face_profiles
-         (tenant_id,company_id,employee_id,provider,collection_id,provider_face_id,external_image_id,status,enrolled_at,last_verified_at,updated_at)
-         VALUES (?,?,?,?,?,?,?,'ENROLLED',${BRASILIA_NOW_SQL},NULL,${BRASILIA_NOW_SQL})
-         ON DUPLICATE KEY UPDATE
-           company_id=VALUES(company_id),provider=VALUES(provider),collection_id=VALUES(collection_id),
-           provider_face_id=VALUES(provider_face_id),external_image_id=VALUES(external_image_id),
-           status='ENROLLED',enrolled_at=${BRASILIA_NOW_SQL},last_verified_at=NULL,updated_at=${BRASILIA_NOW_SQL}`,
-        [
-          req.auth!.tenantId,
-          employee.company_id,
-          id,
-          enrolled.provider,
-          enrolled.collectionId,
-          enrolled.faceId,
-          enrolled.externalImageId,
-        ],
+      return res
+        .status(400)
+        .json({ message: "Selecione ou capture a foto do funcionário." });
+    const mime = validateFaceImage(req.file.buffer);
+    await assertSingleFace(req.file.buffer);
+    await withPhotoLock(req.auth!.tenantId, e.id, async (db) => {
+      await db.query(
+        "INSERT INTO employee_face_images(tenant_id,employee_id,image,mime_type,updated_by,updated_at) VALUES(?,?,?,?,?," +
+          BRASILIA_NOW_SQL +
+          ") ON DUPLICATE KEY UPDATE image=VALUES(image),mime_type=VALUES(mime_type),updated_by=VALUES(updated_by),updated_at=VALUES(updated_at)",
+        [req.auth!.tenantId, e.id, req.file!.buffer, mime, req.auth!.userId],
       );
-      await writeAudit(req, "FACE_ENROLL", "employee", id, old[0], {
-        provider: enrolled.provider,
-        status: "ENROLLED",
-      });
-      res.json({
-        ok: true,
-        message: old[0]?.status === "ENROLLED"
-          ? "Rosto atualizado com sucesso."
-          : "Rosto cadastrado com sucesso.",
-        enrolled: true,
-        provider: enrolled.provider,
-      });
-    } catch (error: any) {
-      return sendFaceError(
-        res,
-        error,
-        "Não foi possível cadastrar o reconhecimento facial.",
-      );
-    }
+    });
+    await writeAudit(req, "FACE_PHOTO_SAVE", "employee", e.id, undefined, {
+      enrolled: true,
+    });
+    res.json({
+      ok: true,
+      enrolled: true,
+      message:
+        "Foto salva. As próximas marcações serão comparadas com esta imagem.",
+    });
   },
 );
-
-faceRouter.delete(
-  "/employee/:id",
-  requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH"),
-  async (req, res) => {
-    const id = Number(req.params.id);
-    const employee = await employeeById(req.auth!.tenantId, id);
-    if (!employee)
-      return res.status(404).json({ message: "Funcionário não encontrado." });
-    const [profiles] = await pool.query<any[]>(
-      "SELECT provider_face_id,status,provider FROM employee_face_profiles WHERE tenant_id=? AND employee_id=? LIMIT 1",
-      [req.auth!.tenantId, id],
+faceRouter.delete("/employee/:id/photo", async (req, res) => {
+  const e = await employee(req);
+  await withPhotoLock(req.auth!.tenantId, e.id, async (db) => {
+    await db.query(
+      "DELETE FROM employee_face_images WHERE tenant_id=? AND employee_id=?",
+      [req.auth!.tenantId, e.id],
     );
-    if (!profiles[0] || profiles[0].status !== "ENROLLED")
-      return res.status(404).json({ message: "Rosto não cadastrado." });
-    try {
-      await revokeFace(req.auth!.tenantId, profiles[0].provider_face_id);
-      await pool.query(
-        `UPDATE employee_face_profiles
-            SET status='REVOKED',last_verified_at=NULL,updated_at=${BRASILIA_NOW_SQL}
-          WHERE tenant_id=? AND employee_id=?`,
-        [req.auth!.tenantId, id],
-      );
-      await writeAudit(req, "FACE_REVOKE", "employee", id, profiles[0], {
-        status: "REVOKED",
-      });
-      res.json({ ok: true, message: "Cadastro facial removido." });
-    } catch (error: any) {
-      return sendFaceError(res, error, "Não foi possível remover o rosto cadastrado.");
-    }
-  },
-);
+  });
+  await writeAudit(req, "FACE_PHOTO_REMOVE", "employee", e.id, undefined, {
+    enrolled: false,
+  });
+  res.json({
+    ok: true,
+    enrolled: false,
+    message:
+      "Foto removida. O funcionário volta ao fluxo de ponto sem comparação facial.",
+  });
+});

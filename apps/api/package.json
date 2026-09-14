@@ -15,6 +15,7 @@
     "test:commercial-email": "tsc tests/commercial-email.test.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist && node --test .test-dist/tests/commercial-email.test.js"
   },
   "dependencies": {
+    "@aws-sdk/client-rekognition": "^3.1132.0",
     "@whiskeysockets/baileys": "7.0.0-rc14",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -27,14 +28,14 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.3.0",
     "mysql2": "^3.11.3",
+    "nodemailer": "^7.0.0",
     "pdfkit": "^0.15.0",
     "pino": "10.3.1",
     "pizzip": "^3.2.0",
     "qrcode": "1.5.4",
     "web-push": "^3.6.7",
     "yauzl": "^3.4.0",
-    "zod": "^3.23.8",
-    "nodemailer": "^7.0.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

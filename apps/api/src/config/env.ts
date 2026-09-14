@@ -23,12 +23,9 @@ const schema = z.object({
   SELFIE_STORAGE_DIR: z.string().default("./storage/selfies"),
   SELFIE_MAX_IMAGE_MB: z.coerce.number().min(1).max(15).default(6),
   FACE_PROVIDER: z.enum(["DISABLED", "AWS_REKOGNITION"]).default("DISABLED"),
-  FACE_MAX_IMAGE_MB: z.coerce.number().min(1).max(15).default(6),
-  FACE_MATCH_THRESHOLD: z.coerce.number().min(70).max(100).default(90),
-  AWS_REGION: z.preprocess(emptyToUndefined, z.string().min(3).optional()),
-  AWS_ACCESS_KEY_ID: z.preprocess(emptyToUndefined, z.string().min(8).optional()),
-  AWS_SECRET_ACCESS_KEY: z.preprocess(emptyToUndefined, z.string().min(16).optional()),
-  AWS_SESSION_TOKEN: z.preprocess(emptyToUndefined, z.string().optional())
+  FACE_MAX_IMAGE_MB: z.coerce.number().min(1).max(15).default(5),
+  FACE_MATCH_THRESHOLD: z.coerce.number().min(80).max(100).default(95),
+  AWS_REGION: z.preprocess(emptyToUndefined, z.string().optional())
 });
 
 export const env = schema.parse(process.env);

@@ -1,3 +1,4 @@
+import { requireEmployeeFace, saveFaceCheck } from "../services/face-verification.service.js";
 import { entitlements } from "../services/entitlements.service.js";
 import { requireFeature } from "../middlewares/commercial-access.js";
 import {
@@ -20,7 +21,6 @@ import {
   removeTimeEntrySelfie,
 } from "../services/selfie.service.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
-import { evaluateEmployeeFace } from "../services/face-verification.service.js";
 export const remotePunchRouter = Router();
 const punchLabels: Record<
   "CLOCK_IN" | "BREAK_OUT" | "BREAK_IN" | "CLOCK_OUT",
@@ -206,37 +206,10 @@ remotePunchRouter.post(
           existingId: Number(duplicate[0].id),
           workDate,
         });
-
-      let face;
-      try {
-        face = await evaluateEmployeeFace({
-          tenantId: req.auth!.tenantId,
-          companyId: e.company_id,
-          employeeId: e.id,
-          image: photo,
-        });
-      } catch (error: any) {
-        return res.status(Number(error?.status || 503)).json({
-          message: error?.message || "Falha ao validar o reconhecimento facial.",
-          code: error?.code || "FACE_PROVIDER_ERROR",
-        });
-      }
-      if (!face.verified) {
-        return res.status(403).json({
-          message: face.message || "Rosto não reconhecido. Tente novamente.",
-          code: face.code || "FACE_NOT_RECOGNIZED",
-          face: {
-            required: face.required,
-            verified: false,
-            similarity: face.similarity,
-            threshold: face.threshold,
-          },
-        });
-      }
-
+      const face = await requireEmployeeFace({ tenantId: req.auth!.tenantId, companyId: e.company_id, employeeId: e.id, image: photo }, gate);
       await gate.beginTransaction();
       const [result] = await gate.query<any>(
-        `INSERT INTO time_entries(tenant_id,company_id,employee_id,entry_type,registered_at,source,manually_adjusted,created_by_user_id,created_at,device_id,device_binding_id,scheduled_work_date,schedule_decision,face_verified,face_similarity,face_provider) VALUES (?,?,?,?,?,?,0,?,${BRASILIA_NOW_SQL},?,?,?,'NOT_REQUIRED',?,?,?)`,
+        `INSERT INTO time_entries(tenant_id,company_id,employee_id,entry_type,registered_at,source,manually_adjusted,created_by_user_id,created_at,device_id,device_binding_id,scheduled_work_date,schedule_decision) VALUES (?,?,?,?,?,?,0,?,${BRASILIA_NOW_SQL},?,?,?,'NOT_REQUIRED')`,
         [
           req.auth!.tenantId,
           e.company_id,
@@ -248,32 +221,10 @@ remotePunchRouter.post(
           d.deviceUid || null,
           device.device?.id || null,
           workDate,
-          face.required ? 1 : null,
-          face.required ? face.similarity : null,
-          face.required ? face.provider : null,
         ],
       );
       const id = Number(result.insertId);
-      if (face.required) {
-        await gate.query(
-          `INSERT INTO time_entry_face_checks
-           (tenant_id,time_entry_id,employee_id,provider,similarity,threshold_value,verified,created_at)
-           VALUES (?,?,?,?,?,?,1,${BRASILIA_NOW_SQL})`,
-          [
-            req.auth!.tenantId,
-            id,
-            e.id,
-            face.provider || "AWS_REKOGNITION",
-            face.similarity,
-            face.threshold,
-          ],
-        );
-        await gate.query(
-          `UPDATE employee_face_profiles SET last_verified_at=${BRASILIA_NOW_SQL},updated_at=${BRASILIA_NOW_SQL}
-            WHERE tenant_id=? AND employee_id=? AND status='ENROLLED'`,
-          [req.auth!.tenantId, e.id],
-        );
-      }
+      await saveFaceCheck(gate, req.auth!.tenantId, e.id, id, face);
       const selfie = await saveTimeEntrySelfie({
         tenantId: req.auth!.tenantId,
         employeeId: e.id,
@@ -316,13 +267,6 @@ remotePunchRouter.post(
         entry_type: d.type,
         remote: true,
         offline: d.offline,
-        face: {
-          required: face.required,
-          verified: face.verified,
-          decision: face.decision,
-          similarity: face.similarity,
-          threshold: face.threshold,
-        },
       });
     } finally {
       if (!committed) {

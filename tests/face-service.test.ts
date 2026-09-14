@@ -1,182 +1,114 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("../apps/api/src/config/env.js", () => ({
-  env: {
-    FACE_PROVIDER: "AWS_REKOGNITION",
-    FACE_MATCH_THRESHOLD: 90,
-    AWS_REGION: "us-east-1",
-    AWS_ACCESS_KEY_ID: "AKIATESTONLY",
-    AWS_SECRET_ACCESS_KEY: "test-secret-access-key",
-    AWS_SESSION_TOKEN: undefined,
+import { beforeEach, expect, it, vi } from "vitest";
+const m = vi.hoisted(() => ({
+  send: vi.fn(),
+  query: vi.fn(),
+  enabled: "AWS_REKOGNITION",
+}));
+vi.mock("@aws-sdk/client-rekognition", () => ({
+  RekognitionClient: class {
+    send = m.send;
+  },
+  DetectFacesCommand: class {
+    constructor(public input: any) {}
+  },
+  CompareFacesCommand: class {
+    constructor(public input: any) {}
   },
 }));
-
-import {
-  collectionId,
-  externalImageId,
-  enrollFace,
-  revokeFace,
-  verifyFace,
-} from "../apps/api/src/services/face.service";
-
-function response(status: number, body: unknown) {
-  return Promise.resolve(
-    new Response(JSON.stringify(body), {
-      status,
-      headers: { "content-type": "application/x-amz-json-1.1" },
-    }),
-  );
-}
-
-function operation(call: any[]) {
-  const headers = call[1]?.headers as Record<string, string>;
-  return headers?.["X-Amz-Target"] || headers?.["x-amz-target"];
-}
-
-function payload(call: any[]) {
-  return JSON.parse(String(call[1]?.body || "{}"));
-}
-
-describe("AWS Rekognition face service", () => {
-  const fetchMock = vi.fn();
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.stubGlobal("fetch", fetchMock);
+vi.mock("../apps/api/src/config/env.js", () => ({
+  env: {
+    get FACE_PROVIDER() {
+      return m.enabled;
+    },
+    AWS_REGION: "us-east-1",
+    FACE_MATCH_THRESHOLD: 95,
+    FACE_MAX_IMAGE_MB: 5,
+  },
+}));
+vi.mock("../apps/api/src/db/pool.js", () => ({ pool: { query: m.query } }));
+import { evaluateEmployeeFace } from "../apps/api/src/services/face-verification.service";
+const args = {
+  tenantId: 7,
+  companyId: 2,
+  employeeId: 11,
+  image: Buffer.from([255, 216, 255, ...Array(40).fill(0)]),
+};
+beforeEach(() => {
+  vi.resetAllMocks();
+  m.enabled = "AWS_REKOGNITION";
+  m.query.mockResolvedValue([[{ image: args.image, mime_type: "image/jpeg" }]]);
+  m.send
+    .mockResolvedValueOnce({ FaceDetails: [{}] })
+    .mockResolvedValueOnce({
+      FaceMatches: [{ Similarity: 99.3 }],
+      UnmatchedFaces: [],
+    });
+});
+it("preserves existing punch flow without a registered photo even when AWS is disabled", async () => {
+  m.enabled = "DISABLED";
+  m.query.mockResolvedValue([[]]);
+  expect(await evaluateEmployeeFace(args)).toMatchObject({
+    required: false,
+    verified: true,
+    decision: "NOT_REQUIRED",
   });
-
-  it("isola collection por tenant e identidade por funcionário", () => {
-    expect(collectionId(7)).toBe("ponto-certo-tenant-7");
-    expect(externalImageId(7, 11)).toBe("tenant-7-employee-11");
+  expect(m.send).not.toHaveBeenCalled();
+});
+it("compares the logged employee reference image to the punch selfie", async () => {
+  expect(await evaluateEmployeeFace(args)).toMatchObject({
+    required: true,
+    verified: true,
+    similarity: 99.3,
   });
-
-  it("cadastra exatamente um rosto e substitui o FaceId anterior", async () => {
-    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
-      const target = (init.headers as Record<string, string>)["X-Amz-Target"];
-      if (target.endsWith("CreateCollection"))
-        return response(400, { __type: "ResourceAlreadyExistsException" });
-      if (target.endsWith("DetectFaces"))
-        return response(200, { FaceDetails: [{ Confidence: 99.9 }] });
-      if (target.endsWith("IndexFaces"))
-        return response(200, {
-          FaceRecords: [
-            {
-              Face: {
-                FaceId: "new-face-id",
-                ExternalImageId: "tenant-7-employee-11",
-              },
-            },
-          ],
-        });
-      if (target.endsWith("DeleteFaces")) return response(200, {});
-      return response(500, { message: "unexpected" });
-    });
-
-    const result = await enrollFace({
-      tenantId: 7,
-      employeeId: 11,
-      image: Buffer.from("face-image"),
-      oldFaceId: "old-face-id",
-    });
-
-    expect(result).toMatchObject({
-      provider: "AWS_REKOGNITION",
-      collectionId: "ponto-certo-tenant-7",
-      faceId: "new-face-id",
-      externalImageId: "tenant-7-employee-11",
-    });
-    const calls = fetchMock.mock.calls;
-    expect(calls.map(operation)).toEqual([
-      "RekognitionService.CreateCollection",
-      "RekognitionService.DetectFaces",
-      "RekognitionService.IndexFaces",
-      "RekognitionService.DeleteFaces",
-    ]);
-    expect(payload(calls[2]).ExternalImageId).toBe("tenant-7-employee-11");
-    expect(payload(calls[3]).FaceIds).toEqual(["old-face-id"]);
+  expect(m.send.mock.calls[1][0].input).toMatchObject({
+    SourceImage: { Bytes: args.image },
+    TargetImage: { Bytes: args.image },
+    SimilarityThreshold: 95,
   });
-
-  it("rejeita cadastro quando a imagem não contém exatamente um rosto", async () => {
-    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
-      const target = (init.headers as Record<string, string>)["X-Amz-Target"];
-      if (target.endsWith("CreateCollection")) return response(200, {});
-      if (target.endsWith("DetectFaces"))
-        return response(200, {
-          FaceDetails: [{ Confidence: 99 }, { Confidence: 98 }],
-        });
-      return response(500, {});
-    });
-
-    await expect(
-      enrollFace({ tenantId: 7, employeeId: 11, image: Buffer.from("two") }),
-    ).rejects.toMatchObject({ code: "FACE_IMAGE_MULTIPLE_FACES" });
-    expect(fetchMock.mock.calls.map(operation)).not.toContain(
-      "RekognitionService.IndexFaces",
-    );
+  expect(m.query.mock.calls[0][1]).toEqual([7, 11]);
+});
+it("rejects a different person", async () => {
+  m.send
+    .mockReset()
+    .mockResolvedValueOnce({ FaceDetails: [{}] })
+    .mockResolvedValueOnce({ FaceMatches: [], UnmatchedFaces: [{}] });
+  expect(await evaluateEmployeeFace(args)).toMatchObject({
+    required: true,
+    verified: false,
+    code: "FACE_MISMATCH",
   });
-
-  it("aprova somente o rosto associado ao funcionário esperado", async () => {
-    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
-      const target = (init.headers as Record<string, string>)["X-Amz-Target"];
-      if (target.endsWith("SearchFacesByImage"))
-        return response(200, {
-          FaceMatches: [
-            {
-              Similarity: 98.5,
-              Face: {
-                FaceId: "face-11",
-                ExternalImageId: "tenant-7-employee-11",
-              },
-            },
-          ],
-        });
-      return response(500, {});
-    });
-
-    await expect(
-      verifyFace({ tenantId: 7, employeeId: 11, image: Buffer.from("selfie") }),
-    ).resolves.toMatchObject({
-      verified: true,
-      similarity: 98.5,
-      threshold: 90,
-      provider: "AWS_REKOGNITION",
-      matchedFaceId: "face-11",
-    });
+});
+it("rejects similarity below the configured threshold", async () => {
+  m.send
+    .mockReset()
+    .mockResolvedValueOnce({ FaceDetails: [{}] })
+    .mockResolvedValueOnce({ FaceMatches: [{ Similarity: 94 }] });
+  expect(await evaluateEmployeeFace(args)).toMatchObject({ verified: false });
+});
+it("does not bypass a registered photo when AWS is disabled", async () => {
+  m.enabled = "DISABLED";
+  await expect(evaluateEmployeeFace(args)).rejects.toMatchObject({
+    status: 503,
   });
-
-  it("rejeita rosto de outro funcionário mesmo com alta similaridade", async () => {
-    fetchMock.mockImplementation(() =>
-      response(200, {
-        FaceMatches: [
-          {
-            Similarity: 99.7,
-            Face: {
-              FaceId: "face-99",
-              ExternalImageId: "tenant-7-employee-99",
-            },
-          },
-        ],
-      }),
-    );
-
-    await expect(
-      verifyFace({ tenantId: 7, employeeId: 11, image: Buffer.from("selfie") }),
-    ).resolves.toMatchObject({
-      verified: false,
-      similarity: 99.7,
-      code: "FACE_MISMATCH",
-    });
+});
+it("does not bypass verification on AWS outage", async () => {
+  m.send.mockReset().mockRejectedValue(new Error("network"));
+  await expect(evaluateEmployeeFace(args)).rejects.toMatchObject({
+    status: 503,
   });
-
-  it("revoga o FaceId cadastrado", async () => {
-    fetchMock.mockImplementation(() => response(200, {}));
-    await revokeFace(7, "face-11");
-    expect(operation(fetchMock.mock.calls[0])).toBe(
-      "RekognitionService.DeleteFaces",
-    );
-    expect(payload(fetchMock.mock.calls[0])).toMatchObject({
-      CollectionId: "ponto-certo-tenant-7",
-      FaceIds: ["face-11"],
-    });
+});
+it("rejects selfies containing multiple faces", async () => {
+  m.send.mockReset().mockResolvedValue({ FaceDetails: [{}, {}] });
+  await expect(evaluateEmployeeFace(args)).rejects.toMatchObject({
+    status: 422,
+    code: "FACE_IMAGE_MULTIPLE_FACES",
+  });
+  expect(m.send).toHaveBeenCalledTimes(1);
+});
+it("rejects selfies with no face", async () => {
+  m.send.mockReset().mockResolvedValue({ FaceDetails: [] });
+  await expect(evaluateEmployeeFace(args)).rejects.toMatchObject({
+    status: 422,
+    code: "FACE_IMAGE_NO_FACE",
   });
 });

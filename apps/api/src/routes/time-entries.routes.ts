@@ -1,3 +1,4 @@
+import { requireEmployeeFace, saveFaceCheck } from "../services/face-verification.service.js";
 import {requireFeature} from "../middlewares/commercial-access.js";
 import { Router } from "express";
 import { z } from "zod";
@@ -16,7 +17,6 @@ import {
   validateEmployeeDevice,
 } from "../services/device-biometric.service.js";
 import { evaluateEmployeeSchedule } from "../services/schedule-guard.service.js";
-import { evaluateEmployeeFace, getEmployeeFacePolicy } from "../services/face-verification.service.js";
 import { env } from "../config/env.js";
 import {
   readTimeEntrySelfie,
@@ -122,8 +122,6 @@ async function logAttempt(args: {
   mocked?: boolean | null;
   geoDecision?: string | null;
   distance?: number | null;
-  faceDecision?: string | null;
-  faceSimilarity?: number | null;
   biometricDecision?: string | null;
   scheduleDecision?: string | null;
   deviceUid?: string | null;
@@ -134,8 +132,8 @@ async function logAttempt(args: {
     await pool.query(
       `INSERT INTO punch_attempts
        (tenant_id,company_id,employee_id,attempted_at,latitude,longitude,accuracy,location_mocked,
-        geo_decision,distance_meters,face_decision,face_similarity,biometric_decision,schedule_decision,device_uid,success,reason,created_at)
-       VALUES (?,?,?,${BRASILIA_NOW_SQL},?,?,?,?,?,?,?,?,?,?,?,?,?,${BRASILIA_NOW_SQL})`,
+        geo_decision,distance_meters,biometric_decision,schedule_decision,device_uid,success,reason,created_at)
+       VALUES (?,?,?,${BRASILIA_NOW_SQL},?,?,?,?,?,?,?,?,?,?,?,${BRASILIA_NOW_SQL})`,
       [
         args.tenantId,
         args.companyId,
@@ -146,8 +144,6 @@ async function logAttempt(args: {
         args.mocked == null ? null : args.mocked ? 1 : 0,
         args.geoDecision || null,
         args.distance == null ? null : Math.round(args.distance * 100) / 100,
-        args.faceDecision || null,
-        args.faceSimilarity == null ? null : Math.round(args.faceSimilarity * 100) / 100,
         args.biometricDecision || null,
         args.scheduleDecision || null,
         args.deviceUid || null,
@@ -406,68 +402,7 @@ timeEntriesRouter.post(
           });
         }
 
-        let face;
-        try {
-          face = await evaluateEmployeeFace({
-            tenantId: req.auth!.tenantId,
-            companyId: employee.company_id,
-            employeeId: employee.id,
-            image: req.file.buffer,
-          });
-        } catch (error: any) {
-          await logAttempt({
-            tenantId: req.auth!.tenantId,
-            companyId: employee.company_id,
-            employeeId: employee.id,
-            latitude: d.latitude,
-            longitude: d.longitude,
-            accuracy: d.accuracy,
-            mocked: d.locationMocked,
-            geoDecision: geo.decision,
-            distance: geo.distanceMeters,
-            scheduleDecision: schedule.decision,
-            biometricDecision: device.policy.requireDeviceBiometric ? "VERIFIED" : "NOT_REQUIRED",
-            faceDecision: "ERROR",
-            deviceUid: d.deviceUid,
-            success: false,
-            reason: error?.message || "Falha ao validar o reconhecimento facial.",
-          });
-          return res.status(Number(error?.status || 503)).json({
-            message: error?.message || "Falha ao validar o reconhecimento facial.",
-            code: error?.code || "FACE_PROVIDER_ERROR",
-          });
-        }
-
-        if (!face.verified) {
-          await logAttempt({
-            tenantId: req.auth!.tenantId,
-            companyId: employee.company_id,
-            employeeId: employee.id,
-            latitude: d.latitude,
-            longitude: d.longitude,
-            accuracy: d.accuracy,
-            mocked: d.locationMocked,
-            geoDecision: geo.decision,
-            distance: geo.distanceMeters,
-            scheduleDecision: schedule.decision,
-            biometricDecision: device.policy.requireDeviceBiometric ? "VERIFIED" : "NOT_REQUIRED",
-            faceDecision: face.code === "FACE_MISMATCH" ? "MISMATCH" : face.code === "FACE_NOT_RECOGNIZED" ? "NOT_RECOGNIZED" : "NOT_ENROLLED",
-            faceSimilarity: face.similarity,
-            deviceUid: d.deviceUid,
-            success: false,
-            reason: face.message,
-          });
-          return res.status(403).json({
-            message: face.message || "Rosto não reconhecido. Tente novamente.",
-            code: face.code || "FACE_NOT_RECOGNIZED",
-            face: {
-              required: face.required,
-              verified: false,
-              similarity: face.similarity,
-              threshold: face.threshold,
-            },
-          });
-        }
+        const face = await requireEmployeeFace({ tenantId: req.auth!.tenantId, companyId: employee.company_id, employeeId: employee.id, image: req.file!.buffer }, gate);
 
         const entryType = (schedule.nextType ||
           d.type ||
@@ -484,9 +419,8 @@ timeEntriesRouter.post(
             `INSERT INTO time_entries
        (tenant_id,company_id,employee_id,entry_type,registered_at,latitude,longitude,accuracy,device_id,source,
         manually_adjusted,created_by_user_id,created_at,location_mocked,device_biometric_verified,
-        device_biometric_type,device_binding_id,schedule_decision,scheduled_work_date,
-        face_verified,face_similarity,face_provider)
-       VALUES (?,?,?, ?,${BRASILIA_NOW_SQL},?,?,?,?, ?,0,?,${BRASILIA_NOW_SQL},?,?,?,?,?,?,?,?,?)`,
+        device_biometric_type,device_binding_id,schedule_decision,scheduled_work_date)
+       VALUES (?,?,?, ?,${BRASILIA_NOW_SQL},?,?,?,?, ?,0,?,${BRASILIA_NOW_SQL},?,?,?,?,?,?)`,
             [
               req.auth!.tenantId,
               employee.company_id,
@@ -504,33 +438,10 @@ timeEntriesRouter.post(
               device.device?.id || null,
               schedule.decision,
               schedule.workDate || null,
-              face.required ? 1 : null,
-              face.required ? face.similarity : null,
-              face.required ? face.provider : null,
             ],
           );
           const timeEntryId = Number(result.insertId);
-
-          if (face.required) {
-            await conn.query(
-              `INSERT INTO time_entry_face_checks
-               (tenant_id,time_entry_id,employee_id,provider,similarity,threshold_value,verified,created_at)
-               VALUES (?,?,?,?,?,?,1,${BRASILIA_NOW_SQL})`,
-              [
-                req.auth!.tenantId,
-                timeEntryId,
-                employee.id,
-                face.provider || "AWS_REKOGNITION",
-                face.similarity,
-                face.threshold,
-              ],
-            );
-            await conn.query(
-              `UPDATE employee_face_profiles SET last_verified_at=${BRASILIA_NOW_SQL},updated_at=${BRASILIA_NOW_SQL}
-                WHERE tenant_id=? AND employee_id=? AND status='ENROLLED'`,
-              [req.auth!.tenantId, employee.id],
-            );
-          }
+          await saveFaceCheck(conn, req.auth!.tenantId, employee.id, timeEntryId, face);
 
           await conn.query(
             `INSERT INTO time_entry_geo_checks
@@ -630,14 +541,12 @@ timeEntriesRouter.post(
               : device.policy.employeeBiometricExempt
                 ? "EXEMPT"
                 : "NOT_REQUIRED",
-            faceDecision: face.decision,
-            faceSimilarity: face.similarity,
             deviceUid: d.deviceUid,
             success: true,
           });
 
           const [rows] = await pool.query<any[]>(
-            "SELECT id,registered_at,entry_type,latitude,longitude,accuracy,device_biometric_verified,device_biometric_type,schedule_decision,scheduled_work_date,face_verified,face_similarity,face_provider FROM time_entries WHERE id=? AND tenant_id=?",
+            "SELECT id,registered_at,entry_type,latitude,longitude,accuracy,device_biometric_verified,device_biometric_type,schedule_decision,scheduled_work_date FROM time_entries WHERE id=? AND tenant_id=?",
             [timeEntryId, req.auth!.tenantId],
           );
           res.status(201).json({
@@ -649,13 +558,6 @@ timeEntriesRouter.post(
               deviceUid: d.deviceUid || null,
               biometricVerified: Boolean(biometricVerified),
               biometricExempt: Boolean(device.policy.employeeBiometricExempt),
-            },
-            face: {
-              required: face.required,
-              verified: face.verified,
-              decision: face.decision,
-              similarity: face.similarity,
-              threshold: face.threshold,
             },
             selfie: { captured: true },
           });
@@ -715,18 +617,13 @@ timeEntriesRouter.post("/", async (req, res) => {
     employee.company_id,
     employee.id,
   );
-  const facePolicy = await getEmployeeFacePolicy(
-    req.auth!.tenantId,
-    employee.company_id,
-    employee.id,
-  );
   if (
     req.auth!.role === "FUNCIONARIO" &&
-    (policy.requireDeviceBiometric || policy.requireRegisteredDevice || facePolicy.required)
+    (policy.requireDeviceBiometric || policy.requireRegisteredDevice)
   ) {
     return res.status(403).json({
       message:
-        "Esta empresa exige validações de segurança (biometria, aparelho ou reconhecimento facial). Use o registro seguro do aplicativo.",
+        "Esta empresa exige biometria e aparelho vinculado. Use o registro seguro do aplicativo.",
       code: "SECURE_PUNCH_REQUIRED",
     });
   }
@@ -743,7 +640,16 @@ timeEntriesRouter.post("/", async (req, res) => {
   if (geo.decision === "BLOCKED")
     return res.status(403).json({ message: geo.message, geo });
 
-  const [result] = await pool.query<any>(
+  const gate = await pool.getConnection();
+  const key = "pc:punch:" + req.auth!.tenantId + ":" + employee.id;
+  let locked = false;
+  try {
+    const [locks] = await gate.query<any[]>("SELECT GET_LOCK(?,5) AS acquired", [key]);
+    locked = Number(locks[0]?.acquired) === 1;
+    if (!locked) return res.status(409).json({ message: "Outra marcação está em processamento." });
+  const [facePhotos] = await gate.query<any[]>("SELECT employee_id FROM employee_face_images WHERE tenant_id=? AND employee_id=? LIMIT 1", [req.auth!.tenantId, employee.id]);
+  if (facePhotos[0]) return res.status(403).json({ message: "Este funcionário possui foto cadastrada. Use o registro seguro com selfie.", code: "SECURE_PUNCH_REQUIRED" });
+  const [result] = await gate.query<any>(
     `INSERT INTO time_entries
      (tenant_id,company_id,employee_id,entry_type,registered_at,latitude,longitude,accuracy,device_id,source,manually_adjusted,created_by_user_id,created_at,location_mocked)
      VALUES (?,?,?, ?,${BRASILIA_NOW_SQL},?,?,?,?,?,0,?,${BRASILIA_NOW_SQL},?)`,
@@ -761,7 +667,7 @@ timeEntriesRouter.post("/", async (req, res) => {
       d.locationMocked == null ? null : d.locationMocked ? 1 : 0,
     ],
   );
-  await pool.query(
+  await gate.query(
     `INSERT INTO time_entry_geo_checks (tenant_id,time_entry_id,work_location_id,distance_meters,within_radius,decision,created_at)
      VALUES (?,?,?,?,?,?,${BRASILIA_NOW_SQL})`,
     [
@@ -775,11 +681,15 @@ timeEntriesRouter.post("/", async (req, res) => {
       geo.decision,
     ],
   );
-  const [rows] = await pool.query<any[]>(
+  const [rows] = await gate.query<any[]>(
     "SELECT id,registered_at,entry_type,latitude,longitude FROM time_entries WHERE id=? AND tenant_id=?",
     [result.insertId, req.auth!.tenantId],
   );
   res.status(201).json({ ...rows[0], geo });
+  } finally {
+    if (locked) await gate.query("SELECT RELEASE_LOCK(?)", [key]).catch(() => {});
+    gate.release();
+  }
 });
 
 timeEntriesRouter.get("/my/today", async (req, res) => {

@@ -1,4 +1,6 @@
 import "express-async-errors";
+import { faceRouter } from "./routes/face.routes.js";
+
 import { logsRouter } from "./routes/logs.routes.js";
 import { teamRouter,auditRouter } from "./routes/team.routes.js";
 import { writeSystemLog } from "./services/system-log.service.js";
@@ -26,7 +28,6 @@ import { settingsRouter } from "./routes/settings.routes.js";
 import { saasRouter } from "./routes/saas.routes.js";
 import { locationsRouter } from "./routes/locations.routes.js";
 import { devicesRouter } from "./routes/devices.routes.js";
-import { faceRouter } from "./routes/face.routes.js";
 import { mailTrackingRouter } from "./routes/mail-tracking.routes.js";
 
 export const app = express();
@@ -37,13 +38,12 @@ app.use("/team",teamRouter);app.use("/audit",auditRouter);
 app.use("/automation",automationRouter);
 app.use("/logs",logsRouter);
 app.use("/remote-punch",remotePunchRouter);
-app.get("/",(_req,res)=>res.json({name:"Ponto Certo SaaS API",version:"2.0.0",multiTenant:true,security:"SELFIE+FACE_REKOGNITION+DEVICE_BIOMETRIC+GEOFENCE+SCHEDULE"}));
-app.use("/faces",faceRouter);
-app.use("/adjustments",adjustmentsRouter);app.use("/health",healthRouter);app.use("/auth",authRouter);app.use("/dashboard",dashboardRouter);app.use("/companies",companiesRouter);app.use("/employees",employeesRouter);app.use("/groups",groupsRouter);app.use("/notifications",notificationsRouter);app.use("/schedules",schedulesRouter);app.use("/time-entries",timeEntriesRouter);app.use("/holidays",holidaysRouter);app.use("/absences",absencesRouter);app.use("/calculations",calculationsRouter);app.use("/reports",reportsRouter);app.use("/settings",settingsRouter);app.use("/saas",saasRouter);app.use("/locations",locationsRouter);app.use("/devices",devicesRouter);
+app.get("/",(_req,res)=>res.json({name:"Ponto Certo SaaS API",version:"0.4.4",multiTenant:true,security:"SELFIE+DEVICE_BIOMETRIC+GEOFENCE+SCHEDULE"}));
+app.use("/adjustments",adjustmentsRouter);app.use("/health",healthRouter);app.use("/auth",authRouter);app.use("/dashboard",dashboardRouter);app.use("/companies",companiesRouter);app.use("/employees",employeesRouter);app.use("/face",faceRouter);app.use("/groups",groupsRouter);app.use("/notifications",notificationsRouter);app.use("/schedules",schedulesRouter);app.use("/time-entries",timeEntriesRouter);app.use("/holidays",holidaysRouter);app.use("/absences",absencesRouter);app.use("/calculations",calculationsRouter);app.use("/reports",reportsRouter);app.use("/settings",settingsRouter);app.use("/saas",saasRouter);app.use("/locations",locationsRouter);app.use("/devices",devicesRouter);
 app.use((err:any,req:express.Request,res:express.Response,_next:express.NextFunction)=>{
   if(req.auth && !["GET","HEAD","OPTIONS"].includes(req.method)) void writeAudit(req,"REQUEST_ERROR","request",null,undefined,undefined,"ERROR",{path:req.originalUrl,status:err?.status||500,errorName:err?.name||"Error",errorCode:err?.code||null,message:err?.message||"Falha na solicitação"}).catch(()=>{});
   if(err?.name==="ZodError")return res.status(400).json({message:"Confira os campos informados.",issues:err.flatten()});
-  if(err?.status)return res.status(err.status).json({message:err.message});
+  if(err?.status)return res.status(err.status).json({message:err.message,code:err.code});
   if(err?.code==="ER_DUP_ENTRY")return res.status(409).json({message:"Este registro já existe. Confira CNPJ, e-mail e identificadores."});
   console.error(err);
   if(req.auth?.companyId){

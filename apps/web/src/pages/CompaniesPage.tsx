@@ -38,7 +38,6 @@ const blank = {
   blockOutsideRadius: true,
   maxGpsAccuracyMeters: 100,
   requireDeviceBiometric: true,
-  requireFaceRecognition: true,
   requireRegisteredDevice: true,
   maxRegisteredDevices: 1,
   enforceScheduleWindow: true,
@@ -99,10 +98,6 @@ export function CompaniesPage({
               item.require_device_biometric == null
                 ? true
                 : Boolean(item.require_device_biometric),
-            requireFaceRecognition:
-              item.require_face_recognition == null
-                ? true
-                : Boolean(item.require_face_recognition),
             requireRegisteredDevice:
               item.require_registered_device == null
                 ? true
@@ -590,16 +585,6 @@ export function CompaniesPage({
             <label className="checkbox-row span-2">
               <input
                 type="checkbox"
-                checked={form.requireFaceRecognition}
-                onChange={(e) =>
-                  setForm({ ...form, requireFaceRecognition: e.target.checked })
-                }
-              />{" "}
-              Exigir reconhecimento facial da selfie (AWS Rekognition)
-            </label>
-            <label className="checkbox-row span-2">
-              <input
-                type="checkbox"
                 checked={form.enforceScheduleWindow}
                 onChange={(e) =>
                   setForm({ ...form, enforceScheduleWindow: e.target.checked })
@@ -629,11 +614,10 @@ export function CompaniesPage({
               Empresa ativa
             </label>
             <div className="info-box span-2">
-              Recomendado: 1 aparelho por funcionário. Quando o reconhecimento facial
-              estiver ativo, cada funcionário deverá ter um rosto cadastrado pelo RH.
-              Funcionários marcados como dispensados de biometria também ficam dispensados
-              desta validação facial. A janela da jornada usa o horário cadastrado + as
-              margens acima.
+              Recomendado: 1 aparelho por funcionário. A janela da jornada usa o
+              horário cadastrado + as margens acima, permitindo controlar
+              antecipações, atrasos e saídas após o expediente sem depender do
+              relógio do celular.
             </div>
             <div className="form-actions span-2">
               <button
