@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   AppState,
   Image,
   Modal,
@@ -42,6 +43,12 @@ export function RemoteClock({
   const [policy, setPolicy] = useState<any>(null),
     [queue, setQueue] = useState<RemotePunch[]>([]),
     [message, setMessage] = useState(""),
+    [cameraFeedback, setCameraFeedback] = useState<{
+      kind: "verifying" | "success" | "error" | "pending";
+      title: string;
+      message: string;
+      retake?: boolean;
+    } | null>(null),
     [busy, setBusy] = useState(false),
     [cameraOpen, setCameraOpen] = useState(false),
     [cameraReady, setCameraReady] = useState(false),
@@ -308,6 +315,7 @@ export function RemoteClock({
     lock.current = true;
     setBusy(true);
     setMessage("");
+    setCameraFeedback(null);
     try {
       const hasInternet = await refreshConnectivity();
       const connected = hasInternet ? await refreshPolicy() : false,
@@ -344,6 +352,7 @@ export function RemoteClock({
     if (lock.current || !cameraReady) return;
     lock.current = true;
     setBusy(true);
+    setCameraFeedback(null);
     try {
       const at = new Date().toISOString(),
         picture = await camera.current?.takePictureAsync({ quality: 0.6 });
@@ -367,10 +376,18 @@ export function RemoteClock({
       setBusy(false);
     }
   }
+  function retryFaceCapture() {
+    setPhoto(null);
+    setCameraReady(false);
+    setCameraFeedback(null);
+    setMessage("");
+  }
+
   async function confirm() {
     if (lock.current || !photo) return;
     lock.current = true;
     setBusy(true);
+    setMessage("");
     try {
       const p = latest.current;
       const punch: RemotePunch = {
@@ -386,27 +403,126 @@ export function RemoteClock({
         selfie: photo.base64,
         deviceUid: credential.current.uid,
       };
-      const next = await updateQueue(employeeId, (current) =>
+      let next = await updateQueue(employeeId, (current) =>
         addToQueue(current, punch),
       );
       setQueue(next);
-      setMessage(
-        "Marcação salva neste aparelho, pendente de envio. Ela só aparecerá no espelho após confirmação do servidor.",
-      );
-      setCameraOpen(false);
-      setPhoto(null);
-      credential.current = { uid: null, secret: null };
+
+      if (punch.offline) {
+        setMessage(
+          "Marcação offline salva neste aparelho. Quando a internet voltar, o servidor fará a validação necessária e sincronizará o ponto.",
+        );
+        setCameraOpen(false);
+        setCameraReady(false);
+        setPhoto(null);
+        setCameraFeedback(null);
+        credential.current = { uid: null, secret: null };
+        return;
+      }
+
+      setCameraFeedback({
+        kind: "verifying",
+        title: "Verificando seu rosto…",
+        message: "Aguarde enquanto confirmamos sua identidade e registramos o ponto.",
+      });
+
+      try {
+        const { error, rejected, ...payload } = punch;
+        const { data } = await api.post(
+          "/remote-punch",
+          { ...payload, employeeId, deviceSecret: credential.current.secret },
+          { timeout: 15000 },
+        );
+        next = await updateQueue(employeeId, (current) =>
+          current.filter((i) => i.requestKey !== punch.requestKey),
+        );
+        if (alive.current) {
+          setQueue(next);
+          setCameraFeedback({
+            kind: "success",
+            title: "Ponto registrado!",
+            message: `${labels[punch.type]} confirmada com sucesso às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}. Comprovante #${data.id}.`,
+          });
+        }
+        onSynced();
+        await new Promise((resolve) => setTimeout(resolve, 1600));
+        if (alive.current) {
+          setCameraOpen(false);
+          setCameraReady(false);
+          setPhoto(null);
+          setCameraFeedback(null);
+          credential.current = { uid: null, secret: null };
+        }
+      } catch (e: any) {
+        const status = e.response?.status;
+        const code = e.response?.data?.code;
+        const error =
+          e.response?.data?.message ||
+          "Não recebemos a confirmação do servidor. A tentativa foi preservada para nova sincronização.";
+        const faceError = [
+          "FACE_MISMATCH",
+          "FACE_IMAGE_NO_FACE",
+          "FACE_IMAGE_MULTIPLE_FACES",
+          "FACE_IMAGE_INVALID",
+        ].includes(code);
+
+        if (faceError) {
+          next = await updateQueue(employeeId, (stored) =>
+            stored.filter((i) => i.requestKey !== punch.requestKey),
+          );
+          if (alive.current) {
+            setQueue(next);
+            setPhoto(null);
+            setCameraReady(false);
+            setCameraFeedback({
+              kind: "error",
+              title:
+                code === "FACE_MISMATCH"
+                  ? "Rosto não reconhecido"
+                  : "Precisamos de uma nova foto",
+              message:
+                error ||
+                "Não foi possível validar seu rosto. Posicione-se de frente para a câmera e tente novamente.",
+              retake: true,
+            });
+          }
+          return;
+        }
+
+        const rejected = [400, 403, 409, 422].includes(status);
+        next = await updateQueue(employeeId, (stored) =>
+          stored.map((i) =>
+            i.requestKey === punch.requestKey
+              ? {
+                  ...i,
+                  rejected,
+                  error: rejected ? error : undefined,
+                }
+              : i,
+          ),
+        );
+        if (alive.current) {
+          setQueue(next);
+          setCameraFeedback({
+            kind: rejected ? "error" : "pending",
+            title: rejected ? "Registro bloqueado" : "Confirmação pendente",
+            message: error,
+          });
+        }
+      }
     } catch (e: any) {
-      setMessage(
-        e.response?.data?.message ||
+      setCameraFeedback({
+        kind: "error",
+        title: "Não foi possível registrar",
+        message:
+          e.response?.data?.message ||
           e.message ||
           "Não foi possível salvar. Mantenha a foto e tente novamente.",
-      );
+      });
     } finally {
       lock.current = false;
-      setBusy(false);
+      if (alive.current) setBusy(false);
     }
-    void sync(true);
   }
   const button = (title: string, fn: () => void, disabled = false) => (
     <Pressable
@@ -488,6 +604,7 @@ export function RemoteClock({
           if (!busy) {
             setCameraOpen(false);
             setCameraReady(false);
+            setCameraFeedback(null);
             credential.current = { uid: null, secret: null };
           }
         }}
@@ -495,7 +612,7 @@ export function RemoteClock({
       >
         <ScrollView contentContainerStyle={s.modal}>
           <Text style={s.title}>
-            Registrar ponto offline
+            {online ? "Registrar ponto" : "Registrar ponto offline"}
           </Text>
           <Text>
             Escolha a marcação. Entradas e retornos iniciam períodos; saídas os
@@ -531,7 +648,11 @@ export function RemoteClock({
                 onCameraReady={() => setCameraReady(true)}
                 onMountError={() => {
                   setCameraReady(false);
-                  setMessage("Não foi possível iniciar a câmera. Feche e abra novamente ou confira a permissão do navegador.");
+                  setCameraFeedback({
+                    kind: "error",
+                    title: "Câmera indisponível",
+                    message: "Não foi possível iniciar a câmera. Feche e abra novamente ou confira a permissão do navegador.",
+                  });
                 }}
               />
               <View pointerEvents="none" style={s.faceGuide}>
@@ -544,34 +665,64 @@ export function RemoteClock({
               )}
             </View>
           )}
+          {cameraFeedback && (
+            <View
+              accessibilityRole="alert"
+              style={[
+                s.cameraFeedback,
+                cameraFeedback.kind === "success" && s.cameraFeedbackSuccess,
+                cameraFeedback.kind === "error" && s.cameraFeedbackError,
+                cameraFeedback.kind === "pending" && s.cameraFeedbackPending,
+              ]}
+            >
+              {cameraFeedback.kind === "verifying" && <ActivityIndicator />}
+              <View style={{ flex: 1, gap: 3 }}>
+                <Text style={s.cameraFeedbackTitle}>{cameraFeedback.title}</Text>
+                <Text style={s.cameraFeedbackMessage}>{cameraFeedback.message}</Text>
+              </View>
+            </View>
+          )}
           {!photo && (
             <Text style={s.cameraHint}>
               Posicione seu rosto dentro da área e aguarde a imagem ao vivo antes de tocar em Tirar foto.
             </Text>
           )}
+          {cameraFeedback?.retake &&
+            button("Tentar novamente", retryFaceCapture)}
           {photo ? (
             <>
-              {button(
-                online
-                  ? "Confirmar marcação remota"
-                  : "Aprovar foto e registrar offline",
-                () => void confirm(),
-              )}
-              {button("Refazer foto", () => { setPhoto(null); setCameraReady(false); })}
+              {!cameraFeedback
+                ? button(
+                    online
+                      ? "Confirmar marcação remota"
+                      : "Aprovar foto e registrar offline",
+                    () => void confirm(),
+                  )
+                : null}
+              {!cameraFeedback && button("Refazer foto", retryFaceCapture)}
             </>
-          ) : (
+          ) : !cameraFeedback?.retake ? (
             button(
               online ? "Capturar selfie" : "Tirar foto para o ponto offline",
               () => void capture(),
               !cameraReady,
             )
-          )}
+          ) : null}
           {!!message && <Text style={s.error}>{message}</Text>}
-          {button("Cancelar ponto remoto", () => {
-            setCameraOpen(false);
-            setCameraReady(false);
-            credential.current = { uid: null, secret: null };
-          })}
+          {button(
+            cameraFeedback?.kind === "pending"
+              ? "Fechar e manter tentativa pendente"
+              : cameraFeedback?.kind === "error" && !cameraFeedback.retake
+                ? "Fechar"
+                : "Cancelar ponto remoto",
+            () => {
+              setCameraOpen(false);
+              setCameraReady(false);
+              setPhoto(null);
+              setCameraFeedback(null);
+              credential.current = { uid: null, secret: null };
+            },
+          )}
         </ScrollView>
       </Modal>
     </View>
@@ -605,5 +756,11 @@ const s = StyleSheet.create({
   cameraLoading: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(0,0,0,0.45)" },
   cameraLoadingText: { color: "white", fontWeight: "700", fontSize: 16 },
   cameraHint: { color: "#174c52", fontWeight: "600", textAlign: "center" },
+  cameraFeedback: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 14, padding: 14, backgroundColor: "#eef5ff", borderWidth: 1, borderColor: "#b8d4ff" },
+  cameraFeedbackSuccess: { backgroundColor: "#e9f8ef", borderColor: "#a7d9b9" },
+  cameraFeedbackError: { backgroundColor: "#fff1f2", borderColor: "#f5b4bc" },
+  cameraFeedbackPending: { backgroundColor: "#fff8e7", borderColor: "#ead09a" },
+  cameraFeedbackTitle: { color: "#17324d", fontSize: 16, fontWeight: "800" },
+  cameraFeedbackMessage: { color: "#43536a", fontSize: 14, lineHeight: 20 },
   choice: { padding: 10, backgroundColor: "#edf6f5", borderRadius: 8 },
 });

@@ -10,6 +10,7 @@ import {
 } from "../services/face.service.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 import { writeAudit } from "../utils/audit.js";
+import { indexEmployeeFace, removeEmployeeFaceIndex } from "../services/face-collection.service.js";
 
 export const faceRouter = Router();
 faceRouter.use(authMiddleware, requireRole("TENANT_ADMIN", "RH"));
@@ -97,6 +98,13 @@ faceRouter.post(
     const mime = validateFaceImage(req.file.buffer);
     await assertSingleFace(req.file.buffer);
     await withPhotoLock(req.auth!.tenantId, e.id, async (db) => {
+      await indexEmployeeFace({
+        tenantId: req.auth!.tenantId,
+        companyId: Number(e.company_id),
+        employeeId: Number(e.id),
+        image: req.file!.buffer,
+        db,
+      });
       await db.query(
         "INSERT INTO employee_face_images(tenant_id,employee_id,image,mime_type,updated_by,updated_at) VALUES(?,?,?,?,?," +
           BRASILIA_NOW_SQL +
@@ -118,6 +126,12 @@ faceRouter.post(
 faceRouter.delete("/employee/:id/photo", async (req, res) => {
   const e = await employee(req);
   await withPhotoLock(req.auth!.tenantId, e.id, async (db) => {
+    await removeEmployeeFaceIndex({
+      tenantId: req.auth!.tenantId,
+      companyId: Number(e.company_id),
+      employeeId: Number(e.id),
+      db,
+    });
     await db.query(
       "DELETE FROM employee_face_images WHERE tenant_id=? AND employee_id=?",
       [req.auth!.tenantId, e.id],

@@ -142,6 +142,37 @@ async function admin(page: Page, hash = "dashboard", role = "TENANT_ADMIN") {
   await page.goto(`/#${hash}`);
 }
 
+test("selfie recusada mostra motivo no modal e exige nova foto", async ({ page, context }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await context.grantPermissions(["camera", "geolocation"], { origin: "http://127.0.0.1:4174" });
+  await context.setGeolocation({ latitude: -23.55, longitude: -46.63, accuracy: 10 });
+  await mock(page, "FUNCIONARIO");
+  await page.addInitScript(() => {
+    localStorage.setItem("pc_token", "test-token");
+    localStorage.setItem("pc_setup_done_1", "1");
+  });
+  await page.route("**/time-entries/geofence-preview", route => route.fulfill({ json: { decision: "ALLOWED" } }));
+  let attempts = 0;
+  await page.route("**/time-entries/secure", async route => {
+    attempts++;
+    await route.fulfill({ status: 403, json: { code: "FACE_MISMATCH", message: "O rosto da selfie não corresponde à foto cadastrada deste funcionário." } });
+  });
+  await page.goto("http://127.0.0.1:4174");
+  await page.getByRole("button", { name: "Registrar ponto", exact: true }).click();
+  await page.getByRole("button", { name: "Tirar foto", exact: true }).click();
+  await page.getByRole("button", { name: "Confirmar e registrar ponto" }).click();
+  await expect(page.getByText("Rosto não reconhecido", { exact: true })).toBeVisible();
+  await expect(page.getByText("O rosto da selfie não corresponde à foto cadastrada deste funcionário.", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Prévia da selfie")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Confirmar e registrar ponto" })).toHaveCount(0);
+  expect(attempts).toBe(1);
+  await page.screenshot({ path: "test-results/selfie-rejected.png" });
+  await page.getByRole("button", { name: "Tirar nova foto", exact: true }).click();
+  await page.getByRole("button", { name: "Tirar foto", exact: true }).click();
+  await expect(page.getByLabel("Prévia da selfie")).toBeVisible();
+  await expect(page.getByText("Rosto não reconhecido", { exact: true })).toHaveCount(0);
+});
+
 test("empresa salva ponto remoto e destinatários sem conectar WhatsApp automaticamente", async ({
   page,
 }) => {

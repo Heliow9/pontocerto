@@ -1,5 +1,6 @@
 import "express-async-errors";
 import { faceRouter } from "./routes/face.routes.js";
+import { autopointRouter } from "./routes/autopoint.routes.js";
 
 import { logsRouter } from "./routes/logs.routes.js";
 import { teamRouter,auditRouter } from "./routes/team.routes.js";
@@ -38,6 +39,7 @@ app.use("/team",teamRouter);app.use("/audit",auditRouter);
 app.use("/automation",automationRouter);
 app.use("/logs",logsRouter);
 app.use("/remote-punch",remotePunchRouter);
+app.use("/autopoint",autopointRouter);
 app.get("/",(_req,res)=>res.json({name:"Ponto Certo SaaS API",version:"0.4.4",multiTenant:true,security:"SELFIE+DEVICE_BIOMETRIC+GEOFENCE+SCHEDULE"}));
 app.use("/adjustments",adjustmentsRouter);app.use("/health",healthRouter);app.use("/auth",authRouter);app.use("/dashboard",dashboardRouter);app.use("/companies",companiesRouter);app.use("/employees",employeesRouter);app.use("/face",faceRouter);app.use("/groups",groupsRouter);app.use("/notifications",notificationsRouter);app.use("/schedules",schedulesRouter);app.use("/time-entries",timeEntriesRouter);app.use("/holidays",holidaysRouter);app.use("/absences",absencesRouter);app.use("/calculations",calculationsRouter);app.use("/reports",reportsRouter);app.use("/settings",settingsRouter);app.use("/saas",saasRouter);app.use("/locations",locationsRouter);app.use("/devices",devicesRouter);
 app.use((err:any,req:express.Request,res:express.Response,_next:express.NextFunction)=>{

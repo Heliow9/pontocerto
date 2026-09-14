@@ -1,3 +1,4 @@
+import { AutoPoint } from "../src/AutoPoint";
 import { ReminderSettings } from "../src/ReminderSettings";
 import { RemoteClock } from "../src/RemoteClock";
 import {
@@ -296,6 +297,7 @@ export default function App() {
     [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
     [loading, setLoading] = useState(false),
+    [autoPointOpen, setAutoPointOpen] = useState(false),
     [deviceStatus, setDeviceStatus] = useState<DeviceStatus | null>(null),
     [deviceUid, setDeviceUid] = useState<string | null>(null),
     [scheduleContext, setScheduleContext] = useState<ScheduleContext | null>(
@@ -305,6 +307,7 @@ export default function App() {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [cameraOpen, setCameraOpen] = useState(false);
   const [selfieUri, setSelfieUri] = useState<string | null>(null);
+  const [cameraFeedback, setCameraFeedback] = useState<{ title: string; message: string; retake?: boolean; pending?: boolean } | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [clockStep, setClockStep] = useState<string | null>(null);
@@ -990,6 +993,7 @@ export default function App() {
       }
       pendingGeo.current = { geo, at: Date.now() };
       setSelfieUri(null);
+      setCameraFeedback(null);
       setCameraReady(false);
       setCameraOpen(true);
     } catch (e: any) {
@@ -1011,9 +1015,20 @@ export default function App() {
     }
   }
 
+  function showCameraFeedback(title: string, message: string) {
+    setCameraFeedback({ title, message });
+  }
+
+  function retakeSelfie() {
+    setSelfieUri(null);
+    setCameraReady(false);
+    setCameraFeedback(null);
+  }
+
   async function captureSelfie() {
     if (!cameraRef.current || capturing || !cameraReady) return;
     setCapturing(true);
+    setCameraFeedback(null);
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.65,
@@ -1021,7 +1036,7 @@ export default function App() {
       });
       if (photo?.uri) setSelfieUri(photo.uri);
     } catch (e: any) {
-      Alert.alert("Foto", e?.message || "Não foi possível capturar a foto.");
+      showCameraFeedback("Foto", e?.message || "Não foi possível capturar a foto.");
     } finally {
       setCapturing(false);
     }
@@ -1035,6 +1050,7 @@ export default function App() {
     if (!selfieUri || !user?.employee_id || punchLock.current) return;
     punchLock.current = true;
     setPunchError("");
+    setCameraFeedback(null);
     setLoading(true);
     setClockStep("Obtendo localização...");
     try {
@@ -1044,7 +1060,7 @@ export default function App() {
           : await getPunchLocation();
       setClockStep("Validando segurança...");
       if (geo.mocked) {
-        Alert.alert(
+        showCameraFeedback(
           "Localização simulada",
           "Foi detectado GPS simulado. O ponto foi bloqueado.",
         );
@@ -1052,7 +1068,7 @@ export default function App() {
       }
       const maxAccuracy = deviceStatus?.policy?.maxGpsAccuracyMeters || 100;
       if (geo.accuracy != null && geo.accuracy > maxAccuracy) {
-        Alert.alert(
+        showCameraFeedback(
           "GPS sem precisão suficiente",
           `Precisão atual: ${Math.round(geo.accuracy)} m. Aguarde até ${maxAccuracy} m ou menos.`,
         );
@@ -1072,7 +1088,7 @@ export default function App() {
       if (requireDevice) {
         uid = await AsyncStorage.getItem(uidKey(Number(user.employee_id)));
         if (!uid) {
-          Alert.alert(
+          showCameraFeedback(
             "Aparelho não vinculado",
             "Vincule o dispositivo em Perfil.",
           );
@@ -1081,7 +1097,7 @@ export default function App() {
 
         if (Platform.OS === "web") {
           if (requireBiometric) {
-            Alert.alert(
+            showCameraFeedback(
               "Biometria necessária",
               "Este funcionário está configurado para exigir biometria nativa. Abra o aplicativo nativo para registrar ou consulte o RH sobre o acesso da sua conta.",
             );
@@ -1106,7 +1122,7 @@ export default function App() {
         }
 
         if (!secret) {
-          Alert.alert(
+          showCameraFeedback(
             requireBiometric
               ? "Credencial biométrica indisponível"
               : "Credencial do aparelho indisponível",
@@ -1142,21 +1158,32 @@ export default function App() {
       setClockStep("Preparando foto...");
       await appendSelfieToForm(form, selfieUri);
 
-      setClockStep("Registrando ponto...");
+      setClockStep("Validando foto e registrando…");
       const { data } = await api.post("/time-entries/secure", form);
 
       await acceptReceipt(data);
     } catch (e: any) {
       if (!e.response || e.response.status >= 500) {
         if (await reconcile()) return;
-        Alert.alert(
-          "Confirmação pendente",
-          "A resposta não chegou. Sua tentativa foi preservada. Toque em confirmar novamente para consultar ou reenviar a mesma operação com segurança.",
-        );
+        setCameraFeedback({
+          title: "Confirmação pendente",
+          message: "Não recebemos a confirmação do servidor. Sua foto e tentativa foram preservadas. Toque em tentar novamente para consultar ou reenviar com segurança.",
+          pending: true,
+        });
         return;
       }
       const code = e?.response?.data?.code;
-      Alert.alert(
+      if (["FACE_MISMATCH", "FACE_IMAGE_NO_FACE", "FACE_IMAGE_MULTIPLE_FACES", "FACE_IMAGE_INVALID"].includes(code)) {
+        setSelfieUri(null);
+        setCameraReady(false);
+        setCameraFeedback({
+          title: code === "FACE_MISMATCH" ? "Rosto não reconhecido" : "Precisamos de uma nova foto",
+          message: e.response.data.message || "Não foi possível validar seu rosto. Tire uma nova foto de frente, em um local iluminado.",
+          retake: true,
+        });
+        return;
+      }
+      showCameraFeedback(
         code === "GEOFENCE_BLOCKED"
           ? "Fora da área permitida"
           : code === "SELFIE_REQUIRED"
@@ -1184,6 +1211,8 @@ export default function App() {
         <Text style={s.body}>Preparando seu acesso…</Text>
       </SafeAreaView>
     );
+  if (!token && autoPointOpen)
+    return <AutoPoint onClose={() => setAutoPointOpen(false)} />;
   if (!token)
     return (
       <SafeAreaView style={s.page}>
@@ -1241,6 +1270,24 @@ export default function App() {
                 disabled={loading}
                 onPress={login}
               />
+              <View style={s.autoPointDivider}>
+                <View style={s.autoPointLine} />
+                <Text style={s.autoPointOr}>ou</Text>
+                <View style={s.autoPointLine} />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Abrir AutoPonto"
+                style={s.autoPointButton}
+                onPress={() => setAutoPointOpen(true)}
+              >
+                <Ionicons name="scan-outline" size={22} color="#087f83" />
+                <View style={{ flex: 1 }}>
+                  <Text style={s.autoPointButtonTitle}>AutoPonto</Text>
+                  <Text style={s.autoPointButtonText}>Relógio facial compartilhado da empresa</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#6a7d91" />
+              </Pressable>
               <Action
                 secondary
                 label="Preciso recuperar meu acesso"
@@ -1994,10 +2041,12 @@ export default function App() {
           <View style={s.cameraHeader}>
             <View style={{ flex: 1 }}>
               <Text style={s.cameraTitle}>
-                {selfieUri ? "Confira sua foto" : "Foto para o registro"}
+                {cameraFeedback?.retake ? "Ponto não registrado" : selfieUri ? "Confira sua foto" : "Foto para o registro"}
               </Text>
               <Text style={s.cameraSub}>
-                {selfieUri
+                {cameraFeedback?.retake
+                  ? "Tire uma nova foto para tentar novamente."
+                  : selfieUri
                   ? "Confirme para validar e registrar sua marcação."
                   : "Posicione seu rosto dentro da área e aguarde a imagem ao vivo antes de tirar a foto."}
               </Text>
@@ -2017,7 +2066,14 @@ export default function App() {
             </Pressable>
           </View>
           <View style={s.cameraWrap}>
-            {selfieUri ? (
+            {cameraFeedback?.retake ? (
+              <ScrollView contentContainerStyle={s.cameraRejected}>
+                <Ionicons name="person-circle-outline" size={72} color="#fbbf24" />
+                <Text style={s.cameraTitle}>Vamos tentar novamente</Text>
+                <Text style={s.cameraRetryTip}>Olhe de frente para a câmera, ilumine seu rosto e mantenha apenas você na foto.</Text>
+                <Text style={s.cameraRetryTip}>Se o problema continuar, procure o RH para conferir sua foto cadastrada.</Text>
+              </ScrollView>
+            ) : selfieUri ? (
               <Image
                 source={{ uri: selfieUri }}
                 style={{ flex: 1 }}
@@ -2034,7 +2090,7 @@ export default function App() {
                   onCameraReady={() => setCameraReady(true)}
                   onMountError={() => {
                     setCameraReady(false);
-                    Alert.alert("Câmera", "Não foi possível iniciar a câmera. Feche e abra novamente ou confira a permissão do navegador.");
+                    showCameraFeedback("Câmera indisponível", "Não foi possível iniciar a câmera. Feche e abra novamente ou confira a permissão do navegador.");
                   }}
                 />
                 <View pointerEvents="none" style={s.faceGuide}>
@@ -2049,16 +2105,25 @@ export default function App() {
             )}
           </View>
           <View style={s.cameraActions}>
-            {selfieUri ? (
+            {cameraFeedback && (
+              <View accessibilityRole="alert" accessibilityLiveRegion="assertive" style={s.cameraFeedback}>
+                <Text style={s.cameraFeedbackTitle}>{cameraFeedback.title}</Text>
+                <Text style={s.cameraFeedbackMessage}>{cameraFeedback.message}</Text>
+              </View>
+            )}
+            {loading && <View accessibilityLiveRegion="polite" style={s.cameraProgress}><ActivityIndicator color="#67e8f9" /><Text style={s.cameraSub}>{clockStep || "Aguarde…"}</Text></View>}
+            {cameraFeedback?.retake ? (
+              <Action icon="camera-outline" label="Tirar nova foto" onPress={retakeSelfie} />
+            ) : selfieUri ? (
               <>
                 <Action
                   secondary
                   label="Tirar outra foto"
-                  disabled={loading}
-                  onPress={() => { setSelfieUri(null); setCameraReady(false); }}
+                  disabled={loading || cameraFeedback?.pending}
+                  onPress={retakeSelfie}
                 />
                 <Action
-                  label={clockStep || "Confirmar e registrar ponto"}
+                  label={loading ? "Aguarde…" : cameraFeedback ? "Tentar novamente" : "Confirmar e registrar ponto"}
                   disabled={loading}
                   onPress={confirmSelfieAndClock}
                 />
@@ -2523,5 +2588,18 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: "white",
   },
+  cameraRejected: { flexGrow: 1, padding: 24, gap: 16, alignItems: "center", justifyContent: "center" },
+  cameraRetryTip: { color: "#c9d7e9", fontSize: 15, lineHeight: 22, textAlign: "center" },
+  cameraFeedback: { backgroundColor: "#fff1f2", borderColor: "#fda4af", borderWidth: 1, borderRadius: 14, padding: 14, gap: 6 },
+  cameraFeedbackTitle: { color: "#9f1239", fontSize: 17, fontWeight: "800" },
+  cameraFeedbackMessage: { color: "#881337", fontSize: 14, lineHeight: 20 },
+  cameraProgress: { flexDirection: "row", gap: 10, alignItems: "center" },
   cameraActions: { padding: 18, gap: 10 },
+
+  autoPointDivider: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 3 },
+  autoPointLine: { flex: 1, height: 1, backgroundColor: "#dbe4ec" },
+  autoPointOr: { color: "#7f90a1", fontSize: 12, fontWeight: "700" },
+  autoPointButton: { flexDirection: "row", alignItems: "center", gap: 12, borderWidth: 1, borderColor: "#cfe2e4", backgroundColor: "#f5fbfb", borderRadius: 13, padding: 14 },
+  autoPointButtonTitle: { color: "#12354a", fontSize: 15, fontWeight: "800" },
+  autoPointButtonText: { color: "#6c8092", fontSize: 11, marginTop: 2 },
 });

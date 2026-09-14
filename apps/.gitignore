@@ -1,0 +1,19 @@
+# Dependencies
+**/node_modules/
+
+# Local environment / secrets
+**/.env
+!**/.env.example
+
+# Build and local caches
+**/dist/
+**/dist-*/
+**/.expo/
+**/.test-dist/
+**/*.tsbuildinfo
+
+# Runtime evidence / generated files
+api/storage/
+
+# Legacy package copied inside the source bundle
+mobile.zip

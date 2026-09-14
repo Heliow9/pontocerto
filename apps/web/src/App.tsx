@@ -28,6 +28,7 @@ type Page =
   | "settings"
   | "saas"
   | "adjustments"
+  | "autopoint"
   | "password";
 const loaders = {
   team: () => import("./pages/TeamPage").then(m=>({default:m.TeamPage})),
@@ -59,6 +60,8 @@ const loaders = {
     import("./pages/AdjustmentsPage").then((m) => ({
       default: m.AdjustmentsPage,
     })),
+  autopoint: () =>
+    import("./pages/AutoPointPage").then((m) => ({ default: m.AutoPointPage })),
 };
 const TeamPage = lazy(loaders.team), AuditPage = lazy(loaders.audit), PasswordPage = lazy(loaders.password),
   DashboardPage = lazy(loaders.dashboard),
@@ -71,6 +74,7 @@ const TeamPage = lazy(loaders.team), AuditPage = lazy(loaders.audit), PasswordPa
   ReportsPage = lazy(loaders.reports),
   SettingsPage = lazy(loaders.settings),
   SaasPage = lazy(loaders.saas),
+  AutoPointPage = lazy(loaders.autopoint),
   AdjustmentsPage = lazy(loaders.adjustments);
 function preload(page: Page) {
   void loaders[page]().catch(() => {});
@@ -84,6 +88,7 @@ const nav: { id: Page; label: string; group: string }[] = [
   { id: "adjustments", label: "Solicitações de ajuste", group: "Operação" },
   { id: "occurrences", label: "Ocorrências", group: "Operação" },
   { id: "reports", label: "Relatórios", group: "Operação" },
+  { id: "autopoint", label: "AutoPonto", group: "Operação" },
   { id: "employees", label: "Funcionários", group: "Cadastros" },
   { id: "schedules", label: "Escalas e jornadas", group: "Cadastros" },
   { id: "locations", label: "Locais de trabalho", group: "Cadastros" },
@@ -176,6 +181,7 @@ export function App() {
     (n) =>
       (n.id !== "saas" || user?.role === "SUPER_ADMIN") &&
       (n.id !== "settings" || canAdmin) &&
+      (n.id !== "autopoint" || user?.role === "TENANT_ADMIN") &&
       (n.id !== "team" || user?.role === "TENANT_ADMIN") &&
       (n.id !== "audit" || ["TENANT_ADMIN","RH","SUPERVISOR"].includes(user?.role)) &&
       (user?.role !== "SUPERVISOR" || n.id === "password" || ["read","write"].includes(user?.permissions?.[n.id === "audit" ? "audit" : n.id] || "none")),
@@ -346,6 +352,7 @@ export function App() {
     occurrences: <OccurrencesPage notify={notify} />,
     reports: <ReportsPage notify={notify} />,
     settings: <SettingsPage notify={notify} />,
+    autopoint: <AutoPointPage notify={notify} />,
     saas: <SaasPage notify={notify} />,
     adjustments: <AdjustmentsPage notify={notify} />,
   };
