@@ -11,7 +11,8 @@
     "db:init": "tsx scripts/init-db.ts",
     "db:migrate": "tsx scripts/migrate-db.ts",
     "db:status": "tsx scripts/migrate-db.ts --check",
-    "push:setup": "tsx scripts/setup-push.ts"
+    "push:setup": "tsx scripts/setup-push.ts",
+    "test:commercial-email": "tsc tests/commercial-email.test.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist && node --test .test-dist/tests/commercial-email.test.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc14",
@@ -32,7 +33,8 @@
     "qrcode": "1.5.4",
     "web-push": "^3.6.7",
     "yauzl": "^3.4.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "nodemailer": "^7.0.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

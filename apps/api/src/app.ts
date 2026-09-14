@@ -26,8 +26,10 @@ import { settingsRouter } from "./routes/settings.routes.js";
 import { saasRouter } from "./routes/saas.routes.js";
 import { locationsRouter } from "./routes/locations.routes.js";
 import { devicesRouter } from "./routes/devices.routes.js";
+import { mailTrackingRouter } from "./routes/mail-tracking.routes.js";
 
 export const app = express();
+app.use("/mail",mailTrackingRouter);
 app.use(cors({origin(origin,callback){const allowed=env.CORS_ORIGINS.split(",").map(x=>x.trim());if(!origin||allowed.includes(origin))return callback(null,true);callback(new Error("Origin não permitida pelo CORS."));},credentials:true}));
 app.use(express.json({limit:"3mb"}));
 app.use("/team",teamRouter);app.use("/audit",auditRouter);
