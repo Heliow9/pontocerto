@@ -1,3 +1,4 @@
+import { checkEmployeeCapacity } from "../services/entitlements.service.js";
 import {
   Router,
   type Request,
@@ -76,19 +77,13 @@ async function validate(
     "SELECT id,name FROM work_locations WHERE tenant_id=? AND company_id=? AND active=1",
     [req.auth!.tenantId, companyId],
   );
-  const [plans] = await db.query(
-    "SELECT COALESCE(tc.max_employees,p.max_employees) AS max_employees FROM subscriptions s JOIN plans p ON p.id=s.plan_id LEFT JOIN tenant_contracts tc ON tc.tenant_id=s.tenant_id WHERE s.tenant_id=? AND s.status IN ('TRIAL','ACTIVE') ORDER BY s.id DESC LIMIT 1",
-    [req.auth!.tenantId],
-  );
-  const [counts] = await db.query(
-    "SELECT COUNT(*) AS total FROM employees WHERE tenant_id=? AND active=1",
-    [req.auth!.tenantId],
-  );
-  const limitError =
-    plans[0]?.max_employees != null &&
-    Number(counts[0].total) + rows.length > Number(plans[0].max_employees)
-      ? "A importação ultrapassa o limite de funcionários do plano."
-      : "";
+  let limitError = "";
+  try {
+    await checkEmployeeCapacity(req.auth!.tenantId, rows.length, db);
+  } catch (error: any) {
+    if (error.status !== 403) throw error;
+    limitError = error.message;
+  }
   const cpfs = new Set<string>(
     existing
       .map((e: any) => String(e.cpf || "").replace(/\D/g, ""))

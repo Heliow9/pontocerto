@@ -173,4 +173,20 @@ describe("employee import API", () => {
       ),
     ).toBe(false);
   });
+  it("rechecks contracted capacity when another employee occupies the last seat after preview", async () => {
+    const original = mocks.query.getMockImplementation()!;
+    let total = 0;
+    mocks.query.mockImplementation(async (sql: string, ...args: any[]) => {
+      if (sql.includes("contract_employees")) return [[{ max_employees: 100, contract_employees: 1, subscription_status: "PAST_DUE" }]];
+      if (sql.includes("COUNT(*)")) return [[{ total }]];
+      return original(sql, ...args);
+    });
+    const draft = await preview();
+    expect(draft.body.canImport).toBe(true);
+    total = 1;
+    const result = await confirm({ rows: draft.body.rows, confirmation: draft.body.confirmation });
+    expect(result.status).toBe(409);
+    expect(result.body.preview[0].errors).toContain("Limite contratado de 1 funcionários atingido.");
+    expect(mocks.commit).not.toHaveBeenCalled();
+  });
 });

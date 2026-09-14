@@ -1,3 +1,5 @@
+import { checkEmployeeCapacity } from "../services/entitlements.service.js";
+import { employeeEmailSuggestions, employeeEmailTaken } from "../services/employee-email.service.js";
 import { employeeImportRouter } from "./employee-import.routes.js";
 import { Router } from "express";
 import bcrypt from "bcryptjs";
@@ -51,6 +53,12 @@ employeesRouter.get("/", async (req, res) => {
   res.json(rows);
 });
 
+employeesRouter.get("/email-suggestions", requireRole("TENANT_ADMIN", "RH"), async (req, res) => {
+  const parsed = z.object({ companyId: z.coerce.number().int().positive(), name: z.string().trim().min(3).max(190) }).safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ message: "Informe empresa e nome completo." });
+  res.json({ suggestions: await employeeEmailSuggestions(req.auth!.tenantId, parsed.data.companyId, parsed.data.name) });
+});
+
 employeesRouter.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [rows] = await pool.query<any[]>(`${listSql} AND e.id=? LIMIT 1`, [req.auth!.tenantId, id]);
@@ -73,7 +81,7 @@ const employeeSchema = z.object({
   biometricExempt: z.boolean().optional().default(false),
   workLocationIds: z.array(z.number().int().positive()).optional().default([]),
   active: z.boolean().optional().default(true),
-  accessEmail: z.string().email().optional().nullable().or(z.literal("")),
+  accessEmail: z.string().trim().toLowerCase().max(190).email().or(z.literal("")).optional().nullable(),
   accessPassword: z.string().min(6).optional().nullable().or(z.literal(""))
 });
 
@@ -107,24 +115,6 @@ async function validateLocations(tenantId: number, companyId: number, locationId
   return rows.length === locationIds.length ? null : "Um ou mais locais de trabalho são inválidos para a empresa selecionada.";
 }
 
-async function enforceEmployeePlanLimit(tenantId: number, db:any=pool) {
-  const [plans] = await db.query(
-    `SELECT COALESCE(tc.max_employees,p.max_employees) AS max_employees, s.status
-       FROM subscriptions s JOIN plans p ON p.id=s.plan_id LEFT JOIN tenant_contracts tc ON tc.tenant_id=s.tenant_id
-      WHERE s.tenant_id=? ORDER BY s.id DESC LIMIT 1`,
-    [tenantId]
-  );
-  const plan = plans[0];
-  if (!plan || plan.max_employees == null || !["TRIAL", "ACTIVE"].includes(plan.status)) return null;
-  const [counts] = await db.query(
-    "SELECT COUNT(*) AS total FROM employees WHERE tenant_id=? AND active=1",
-    [tenantId]
-  );
-  return Number(counts[0]?.total || 0) >= Number(plan.max_employees)
-    ? `Limite do plano atingido (${plan.max_employees} funcionários).`
-    : null;
-}
-
 employeesRouter.post(
   "/",
   requireRole("SUPER_ADMIN", "TENANT_ADMIN", "RH"),
@@ -136,14 +126,14 @@ employeesRouter.post(
     if (relationError) return res.status(400).json({ message: relationError });
     const locationError = await validateLocations(req.auth!.tenantId, e.companyId, e.workLocationIds);
     if (locationError) return res.status(400).json({ message: locationError });
-    const planError = await enforceEmployeePlanLimit(req.auth!.tenantId);
-    if (planError) return res.status(403).json({ message: planError });
 
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
       await conn.query("SELECT id FROM tenants WHERE id=? FOR UPDATE",[req.auth!.tenantId]);
-      if(e.active){const limit=await enforceEmployeePlanLimit(req.auth!.tenantId,conn);if(limit)throw Object.assign(new Error(limit),{status:403});}
+      if (e.active) await checkEmployeeCapacity(req.auth!.tenantId, 1, conn);
+      if (e.accessEmail && await employeeEmailTaken(e.accessEmail, req.auth!.tenantId, undefined, conn))
+        throw Object.assign(new Error("E-mail já cadastrado. Escolha uma das sugestões disponíveis."), { status: 409, emailConflict: true });
       const [result] = await conn.query<any>(
         `INSERT INTO employees
          (tenant_id, company_id, name, cpf, pis, registration_number, admission_date, ctps,
@@ -169,8 +159,8 @@ employeesRouter.post(
         await conn.query(
           `INSERT INTO users
            (tenant_id, company_id, employee_id, name, email, password_hash, role, active, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'FUNCIONARIO', 1, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
-          [req.auth!.tenantId, e.companyId, employeeId, e.name, e.accessEmail, hash]
+           VALUES (?, ?, ?, ?, ?, ?, 'FUNCIONARIO', ?, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
+          [req.auth!.tenantId, e.companyId, employeeId, e.name, e.accessEmail, hash, e.active ? 1 : 0]
         );
       }
       await conn.commit();
@@ -178,6 +168,10 @@ employeesRouter.post(
       res.status(201).json({ id: employeeId });
     } catch (error: any) {
       await conn.rollback();
+      if (error.emailConflict || (error?.code === "ER_DUP_ENTRY" && e.accessEmail && await employeeEmailTaken(e.accessEmail, req.auth!.tenantId, undefined, conn))) {
+        const suggestions = await employeeEmailSuggestions(req.auth!.tenantId, e.companyId, e.name, conn);
+        return res.status(409).json({ message: "E-mail já cadastrado. Escolha uma sugestão disponível.", suggestions });
+      }
       if (error?.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "CPF, matrícula ou e-mail já cadastrado." });
       throw error;
     } finally {
@@ -211,7 +205,12 @@ employeesRouter.put(
     try {
       await conn.beginTransaction();
       await conn.query("SELECT id FROM tenants WHERE id=? FOR UPDATE",[req.auth!.tenantId]);
-      if(e.active&&!beforeRows[0].active){const limit=await enforceEmployeePlanLimit(req.auth!.tenantId,conn);if(limit)throw Object.assign(new Error(limit),{status:403});}
+      const [current] = await conn.query<any[]>("SELECT * FROM employees WHERE id=? AND tenant_id=? FOR UPDATE", [id, req.auth!.tenantId]);
+      if (!current[0]) throw Object.assign(new Error("Funcionário não encontrado."), { status: 404 });
+      beforeRows[0] = current[0];
+      if (e.active && !current[0].active) await checkEmployeeCapacity(req.auth!.tenantId, 1, conn);
+      if (e.accessEmail && await employeeEmailTaken(e.accessEmail, req.auth!.tenantId, id, conn))
+        throw Object.assign(new Error("E-mail já cadastrado. Escolha uma das sugestões disponíveis."), { status: 409, emailConflict: true });
       await conn.query(
         `UPDATE employees SET company_id=?, name=?, cpf=?, pis=?, registration_number=?, admission_date=?,
           ctps=?, position_name=?, department_name=?, group_id=?, work_schedule_id=?, biometric_exempt=?, active=?, updated_at=${BRASILIA_NOW_SQL}
@@ -276,6 +275,10 @@ employeesRouter.put(
       res.json({ ok: true });
     } catch (error: any) {
       await conn.rollback();
+      if (error.emailConflict || (error?.code === "ER_DUP_ENTRY" && e.accessEmail && await employeeEmailTaken(e.accessEmail, req.auth!.tenantId, id, conn))) {
+        const suggestions = await employeeEmailSuggestions(req.auth!.tenantId, e.companyId, e.name, conn);
+        return res.status(409).json({ message: "E-mail já cadastrado. Escolha uma sugestão disponível.", suggestions });
+      }
       if (error?.code === "ER_DUP_ENTRY") return res.status(409).json({ message: "CPF, matrícula ou e-mail já cadastrado." });
       throw error;
     } finally {

@@ -64,6 +64,31 @@ export function EmployeesPage({
   );
   const [form, setForm] = useState<any>(blank);
 
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
+  const [emailSuggestionError, setEmailSuggestionError] = useState("");
+  const [emailSuggestionLoading, setEmailSuggestionLoading] = useState(false);
+  const emailRequest = useRef(0);
+  const [emailRetry, setEmailRetry] = useState(0);
+  useEffect(() => {
+    const request = ++emailRequest.current;
+    setEmailSuggestions([]);
+    setEmailSuggestionError("");
+    setEmailSuggestionLoading(false);
+    if (editing === undefined || !editable || !form.companyId || form.name.trim().split(/\s+/).length < 2) return;
+    setEmailSuggestionLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await api.get("/employees/email-suggestions", { params: { companyId: Number(form.companyId), name: form.name } });
+        if (request === emailRequest.current) setEmailSuggestions(data.suggestions || []);
+      } catch {
+        if (request === emailRequest.current) setEmailSuggestionError("Não foi possível consultar sugestões de e-mail.");
+      } finally {
+        if (request === emailRequest.current) setEmailSuggestionLoading(false);
+      }
+    }, 350);
+    return () => { clearTimeout(timer); ++emailRequest.current; };
+  }, [editing, editable, form.companyId, form.name, emailRetry]);
+
   const loadState = useLoadState();
   const fetchData = () =>
     Promise.all([
@@ -174,7 +199,13 @@ export function EmployeesPage({
       notify("Funcionário salvo com sucesso.");
       setEditing(undefined);
       load();
-    } catch (err) {
+    } catch (err: any) {
+      if (Array.isArray(err.response?.data?.suggestions)) {
+        ++emailRequest.current;
+        setEmailSuggestions(err.response.data.suggestions);
+        setEmailSuggestionError("");
+        setEmailSuggestionLoading(false);
+      }
       notify(apiMessage(err), "error");
     }
   }
@@ -764,6 +795,13 @@ export function EmployeesPage({
               </div>
 
               <div className="section-label span-2">Acesso ao aplicativo</div>
+              <div className="span-2" aria-live="polite">
+                <p className="muted">Sugestão: nome.ultimosobrenome@primeironomedaempresa.com.br. Informe nome completo e empresa para consultar opções disponíveis.</p>
+                {emailSuggestionLoading && <p>Consultando sugestões…</p>}
+                {emailSuggestionError && <p role="alert">{emailSuggestionError} <button type="button" className="ghost" onClick={() => setEmailRetry(value => value + 1)}>Tentar novamente</button></p>}
+                {emailSuggestions.map(email => <button key={email} type="button" className="ghost" aria-label={`Usar ${email}`} onClick={() => setForm((current: any) => ({ ...current, accessEmail: email }))}>{email}</button>)}
+                {emailSuggestions.length > 0 && <p className="muted">Clique em uma sugestão para usar. A disponibilidade será confirmada ao salvar.</p>}
+              </div>
               <label>
                 E-mail de acesso
                 <input
