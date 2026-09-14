@@ -14,6 +14,7 @@ import { api } from "../api";
 import { Company, Employee, Schedule, WorkLocation } from "../types";
 import { Modal } from "../components/Modal";
 import { OvertimeReference } from "../components/OvertimeReference";
+import { EmployeeFaceEnrollment, enrollEmployeeFace } from "../components/EmployeeFaceEnrollment";
 import { Badge, Empty, PageHeader } from "../components/Ui";
 import { apiMessage, brDate } from "../utils";
 
@@ -43,6 +44,7 @@ export function EmployeesPage({
 }) {
   const { canManage, canAdjust, role } = useAccess();
   const editable = canManage;
+  const canManageFace = ["SUPER_ADMIN", "TENANT_ADMIN", "RH"].includes(role);
   const [groups, setGroups] = useState<EmployeeGroup[]>([]);
   const [importOpen, setImportOpen] = useState(false);
   const [manageGroups, setManageGroups] = useState(false);
@@ -64,6 +66,7 @@ export function EmployeesPage({
     undefined,
   );
   const [form, setForm] = useState<any>(blank);
+  const [pendingFace, setPendingFace] = useState<File | null>(null);
 
   const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
   const [emailSuggestionError, setEmailSuggestionError] = useState("");
@@ -128,6 +131,7 @@ export function EmployeesPage({
 
   async function open(item?: Employee) {
     const request = ++editRequest.current;
+    setPendingFace(null);
     setEditing(item || null);
     setFormError("");
     setFormLoading(Boolean(item));
@@ -195,9 +199,29 @@ export function EmployeesPage({
           : null,
         workLocationIds: (form.workLocationIds || []).map(Number),
       };
-      if (editing) await api.put(`/employees/${editing.id}`, payload);
-      else await api.post("/employees", payload);
-      notify("Funcionário salvo com sucesso.");
+      let employeeId = editing?.id;
+      if (editing) {
+        await api.put(`/employees/${editing.id}`, payload);
+      } else {
+        const { data } = await api.post("/employees", payload);
+        employeeId = Number(data.id);
+      }
+      if (!editing && pendingFace && employeeId) {
+        try {
+          await enrollEmployeeFace(employeeId, pendingFace);
+        } catch (faceError) {
+          notify(
+            `Funcionário salvo, mas o rosto não foi cadastrado: ${apiMessage(faceError)}`,
+            "error",
+          );
+          setPendingFace(null);
+          setEditing(undefined);
+          load();
+          return;
+        }
+      }
+      notify(pendingFace && !editing ? "Funcionário e rosto cadastrados com sucesso." : "Funcionário salvo com sucesso.");
+      setPendingFace(null);
       setEditing(undefined);
       load();
     } catch (err: any) {
@@ -491,6 +515,7 @@ export function EmployeesPage({
                   <th>Jornada / Local</th>
                   <th>Admissão</th>
                   <th>Biometria</th>
+                  <th>Rosto</th>
                   <th>Dispositivo</th>
                   <th>Status</th>
                   <th></th>
@@ -521,6 +546,11 @@ export function EmployeesPage({
                     <td>
                       <Badge tone={i.biometric_exempt ? "neutral" : "success"}>
                         {i.biometric_exempt ? "Dispensada" : "Obrigatória"}
+                      </Badge>
+                    </td>
+                    <td>
+                      <Badge tone={i.face_status === "ENROLLED" ? "success" : i.biometric_exempt ? "neutral" : "warning"}>
+                        {i.face_status === "ENROLLED" ? "Cadastrado" : i.biometric_exempt ? "Dispensado" : "Pendente"}
                       </Badge>
                     </td>
                     <td>
@@ -588,6 +618,7 @@ export function EmployeesPage({
           title={editing ? "Editar funcionário" : "Novo funcionário"}
           onClose={() => {
             editRequest.current++;
+            setPendingFace(null);
             setEditing(undefined);
           }}
           wide
@@ -791,10 +822,21 @@ export function EmployeesPage({
               </label>
               <div className="muted span-2">
                 Quando marcado, o funcionário continua sujeito ao GPS, raio
-                permitido, jornada e horário oficial do servidor. Se esta opção
-                for alterada, os aparelhos vinculados serão revogados para
+                permitido, jornada e horário oficial do servidor. A dispensa também
+                desativa a exigência de reconhecimento facial para este funcionário.
+                Se esta opção for alterada, os aparelhos vinculados serão revogados para
                 aplicar a nova política com segurança.
               </div>
+
+              <EmployeeFaceEnrollment
+                employeeId={editing?.id}
+                employeeName={form.name}
+                editable={canManageFace}
+                pendingFile={editing ? null : pendingFace}
+                onPendingChange={setPendingFace}
+                onChanged={load}
+                notify={notify}
+              />
 
               <div className="section-label span-2">Acesso ao aplicativo</div>
               <div className="span-2" aria-live="polite">
@@ -841,7 +883,10 @@ export function EmployeesPage({
                 <button
                   type="button"
                   className="ghost"
-                  onClick={() => setEditing(undefined)}
+                  onClick={() => {
+                    setPendingFace(null);
+                    setEditing(undefined);
+                  }}
                 >
                   Cancelar
                 </button>

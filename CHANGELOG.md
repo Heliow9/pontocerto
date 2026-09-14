@@ -1,4 +1,18 @@
 # Changelog
+
+## 2026-09-14 — Ponto Certo 2.0: reconhecimento facial AWS Rekognition
+
+- Cadastro facial no novo funcionário ou posteriormente, com câmera frontal e upload JPG/PNG.
+- Foto de cadastro validada com exatamente um rosto e indexada em collection Rekognition isolada por tenant.
+- Reconhecimento da selfie antes de gravar o ponto normal e antes de aceitar sincronização remota/offline.
+- Bloqueio com `FACE_NOT_ENROLLED`, `FACE_NOT_RECOGNIZED` e `FACE_MISMATCH`.
+- Evidência de provider, similaridade, threshold e resultado registrada no banco.
+- Política `require_face_recognition` voltou ao painel da empresa e não pode mais ser zerada por hardcode ao salvar.
+- `biometric_exempt` também dispensa a validação facial individual.
+- Cadastro/atualização/remoção do rosto restritos a Admin/RH.
+- Credenciais AWS permanecem exclusivamente no backend; integração utiliza API oficial Rekognition assinada com AWS SigV4.
+- Documentação de IAM, variáveis e deploy em `docs/PONTO_CERTO_2_RECONHECIMENTO_FACIAL.md`.
+
 ## 2026-09-12 — Câmera com pré-visualização antes da captura
 
 - A câmera da marcação normal e do ponto offline/remoto agora só libera o botão de foto após `onCameraReady`.

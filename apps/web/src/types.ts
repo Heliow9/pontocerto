@@ -28,6 +28,7 @@ export type Company = {
   enforce_schedule_window?: number | null;
   schedule_early_margin_minutes?: number | null;
   schedule_late_margin_minutes?: number | null;
+  require_face_recognition?: number | null;
   mapbox_place_id?: string | null;
 };
 export type Employee = {
@@ -52,6 +53,9 @@ export type Employee = {
   location_names?: string | null;
   device_count?: number | null;
   last_device_seen_at?: string | null;
+  face_status?: string | null;
+  face_enrolled_at?: string | null;
+  face_last_verified_at?: string | null;
 };
 export type Schedule = {
   id: number;

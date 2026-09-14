@@ -1,6 +1,23 @@
-# Ponto Certo SaaS v0.4
+# Ponto Certo SaaS 2.0
 
 SaaS multi-tenant de gestão de jornada com React, Expo/React Native, Node.js/Express e MySQL.
+
+## Ponto Certo 2.0 — reconhecimento facial AWS
+
+A versão 2.0 reintroduz identificação facial de forma integrada à arquitetura atual: o RH pode cadastrar o rosto pela câmera ou por imagem e, quando a política da empresa estiver ativa, a selfie do ponto é validada no Amazon Rekognition antes da marcação ser gravada. O fluxo funciona no registro normal e na sincronização do ponto remoto/offline.
+
+- foto facial no cadastro do funcionário ou posteriormente;
+- câmera frontal pelo navegador e seleção JPG/PNG;
+- collection separada por tenant;
+- validação do funcionário autenticado por `ExternalImageId`;
+- threshold configurável, padrão 90%;
+- Access Key/Secret somente no backend;
+- evidência de similaridade e auditoria;
+- política por empresa e dispensa individual de biometria;
+- nenhuma marcação é criada quando o rosto obrigatório não é confirmado.
+
+Consulte **[Ponto Certo 2.0 — Reconhecimento Facial](docs/PONTO_CERTO_2_RECONHECIMENTO_FACIAL.md)** para IAM, variáveis AWS e roteiro de teste.
+
 
 ## Atualização de interface e PWA
 
@@ -8,9 +25,9 @@ Veja as [melhorias implementadas e verificações](docs/UI_UX_IMPLEMENTED.md) e 
 
 Para atualizar um ambiente existente, use `npm ci --include=dev` e `npm run db:migrate --workspace apps/api`. Reserve `db:init` para a inicialização com dados de demonstração.
 
-## O que mudou na v0.4
+## Histórico da v0.4
 
-A versão 0.4 remove a dependência de reconhecimento facial AWS e usa a biometria nativa do próprio aparelho.
+A versão 0.4 havia removido o reconhecimento facial AWS e mantido somente a biometria nativa do aparelho. A versão 2.0 mantém essa proteção e acrescenta novamente a validação de identidade facial no servidor.
 
 O registro seguro do funcionário combina:
 
@@ -98,9 +115,18 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:8081
 
 # Opcional para geocodificar o endereço automaticamente
 MAPBOX_ACCESS_TOKEN=
+
+# Ponto Certo 2.0 — reconhecimento facial
+FACE_PROVIDER=AWS_REKOGNITION
+FACE_MAX_IMAGE_MB=6
+FACE_MATCH_THRESHOLD=90
+AWS_REGION=sa-east-1
+AWS_ACCESS_KEY_ID=
+AWS_SECRET_ACCESS_KEY=
+AWS_SESSION_TOKEN=
 ```
 
-Nenhuma variável AWS é necessária.
+As credenciais AWS devem existir somente no `.env` da API e nunca no frontend ou no repositório.
 
 ## Configuração recomendada da empresa
 

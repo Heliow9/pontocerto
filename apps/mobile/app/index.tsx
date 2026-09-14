@@ -1165,7 +1165,9 @@ export default function App() {
               ? "Jornada bloqueada"
               : code?.startsWith("DEVICE")
                 ? "Dispositivo bloqueado"
-                : "Registro bloqueado",
+                : code?.startsWith("FACE")
+                  ? "Reconhecimento facial"
+                  : "Registro bloqueado",
         e?.response?.data?.message ||
           e?.message ||
           "Não foi possível registrar o ponto.",

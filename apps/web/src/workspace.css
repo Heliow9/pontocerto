@@ -900,3 +900,46 @@ table td {
 .group-fields > label { display: flex; flex-direction: column; gap: 8px; font-size: 13px; font-weight: 650; color: #35566a; margin: 16px 0; }
 .group-fields > label input { width: 100%; min-height: 46px; border: 1px solid #d6dfe6; border-radius: 12px; padding: 10px 12px; font: inherit; font-size: 15px; }
 .group-fields h3 { margin: 20px 0 12px; }
+
+.face-enrollment {
+  border: 1px solid var(--border, #dce3ea);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--surface-soft, #f8fafc);
+  display: grid;
+  gap: 14px;
+}
+.face-enrollment-head,
+.face-preview-box,
+.face-status-details,
+.face-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.face-enrollment-head { justify-content: space-between; align-items: flex-start; }
+.face-enrollment-head p { margin: 4px 0 0; max-width: 720px; }
+.face-camera-box { display: grid; gap: 10px; }
+.face-camera-video {
+  width: min(100%, 460px);
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #111827;
+  transform: scaleX(-1);
+}
+.face-preview-box img {
+  width: 112px;
+  height: 112px;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 1px solid var(--border, #dce3ea);
+}
+.face-status-details { font-size: 12px; }
+.face-status-details span + span::before { content: "•"; margin-right: 12px; }
+.face-pending-note { margin: 0; }
+@media (max-width: 640px) {
+  .face-actions > button { width: 100%; }
+  .face-preview-box { align-items: flex-start; }
+}

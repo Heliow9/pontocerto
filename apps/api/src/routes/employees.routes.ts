@@ -18,6 +18,7 @@ employeesRouter.use("/import", employeeImportRouter);
 const listSql = `SELECT e.id, e.company_id, e.name, e.cpf, e.pis, e.registration_number,
                         e.admission_date, e.ctps, e.position_name, e.department_name,
                         e.group_id, g.name AS group_name, e.work_schedule_id, e.biometric_exempt, e.active,
+                        fp.status AS face_status, fp.enrolled_at AS face_enrolled_at, fp.last_verified_at AS face_last_verified_at,
                         c.legal_name AS company_name,
                         s.name AS schedule_name,
                         u.id AS user_id, u.email AS access_email,
@@ -31,6 +32,7 @@ const listSql = `SELECT e.id, e.company_id, e.name, e.cpf, e.pis, e.registration
                    JOIN companies c ON c.id=e.company_id AND c.tenant_id=e.tenant_id
                    LEFT JOIN employee_groups g ON g.id=e.group_id AND g.tenant_id=e.tenant_id AND g.company_id=e.company_id
                    LEFT JOIN work_schedules s ON s.id=e.work_schedule_id AND s.tenant_id=e.tenant_id
+                   LEFT JOIN employee_face_profiles fp ON fp.employee_id=e.id AND fp.tenant_id=e.tenant_id
                    LEFT JOIN users u ON u.employee_id=e.id AND u.tenant_id=e.tenant_id
                   WHERE e.tenant_id=?`;
 
