@@ -832,6 +832,9 @@ test("gerencia grupo, vincula integrantes e filtra funcionários", async ({
     }),
   );
   await page.getByRole("button", { name: "Gerenciar grupos" }).click();
+  await expect(page.getByText("Nenhum grupo cadastrado")).toBeVisible();
+  await page.getByRole("button", { name: "Novo grupo", exact: true }).click();
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Novo grupo", exact: true })).toBeVisible();
   await page.getByLabel("Nome do grupo").fill("Equipe Centro");
   await page.getByRole("dialog").getByRole("checkbox").check();
   await page.screenshot({
@@ -839,11 +842,21 @@ test("gerencia grupo, vincula integrantes e filtra funcionários", async ({
     fullPage: true,
   });
   await page
-    .getByRole("button", { name: "Salvar grupo e integrantes" })
+    .getByRole("button", { name: "Criar grupo", exact: true })
     .click();
   await expect(
     page.getByRole("status").filter({ hasText: "Grupo salvo" }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Editar Equipe Centro", exact: true }).click();
+  await expect(page.getByLabel("Nome do grupo")).toHaveValue("Equipe Centro");
+  await expect(page.getByRole("dialog").getByRole("checkbox")).toBeChecked();
+  await page.getByText("Mais opções do grupo", { exact: true }).click();
+  await page.getByLabel("Horas extras por mês").fill("12");
+  await page.getByLabel("Horas extras por mês").press("Enter");
+  await expect(page.getByRole("dialog").getByRole("heading", { name: "Editar grupo", exact: true })).toBeVisible();
+  await page.getByLabel("Horas extras por mês").fill("999");
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Editar Equipe Centro", exact: true })).toBeVisible();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "Fechar", exact: true })
@@ -851,6 +864,24 @@ test("gerencia grupo, vincula integrantes e filtra funcionários", async ({
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByLabel("Grupo", { exact: true }).selectOption("4");
   await expect(page.getByText("Ana Oliveira", { exact: true })).toBeVisible();
+});
+test("grupos no celular mantêm ações visíveis e explicam transferências", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await admin(page, "employees");
+  await page.route("**/groups", route => route.fulfill({ json: [{ id: 4, name: "Equipe Centro", company_id: 1, employee_count: 0 }] }));
+  await page.route("**/employees?*", route => route.fulfill({ json: Array.from({ length: 14 }, (_, index) => ({ ...employee, id: index + 1, name: index ? "Funcionário " + index : "Ana Oliveira", group_id: 8, group_name: "Equipe Norte" })) }));
+  await page.reload();
+  await page.getByRole("button", { name: "Gerenciar grupos" }).click();
+  await page.getByRole("button", { name: "Editar Equipe Centro", exact: true }).click();
+  await page.getByLabel("Buscar integrantes").fill("Ana Oliveira");
+  await page.getByRole("dialog").getByRole("checkbox").check();
+  await expect(page.getByText("1 funcionário(s) serão transferidos")).toBeVisible();
+  const save = page.getByRole("button", { name: "Salvar alterações", exact: true });
+  await expect(save).toBeInViewport();
+  await expect(page.getByRole("dialog")).toHaveJSProperty("scrollWidth", await page.getByRole("dialog").evaluate(el => el.clientWidth));
+  await page.screenshot({ path: "test-results/employee-groups-mobile.png", fullPage: false });
+  await page.getByRole("button", { name: "Fechar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Descartar alterações?" })).toBeVisible();
 });
 test("PWA mostra próximo registro, ajuda e calendário com apuração", async ({
   page,

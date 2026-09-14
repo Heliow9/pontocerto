@@ -1,3 +1,4 @@
+import { Icon } from "../components/Icon";
 import { EmployeeImport } from "../components/EmployeeImport";
 import { GroupsManager, type EmployeeGroup } from "../components/GroupsManager";
 import { useAccess } from "../components/Access";
@@ -311,7 +312,8 @@ export function EmployeesPage({
               <button className="secondary" onClick={() => setImportOpen(true)}>
                 Importar planilha
               </button>
-              <button onClick={() => setManageGroups(true)}>
+              <button className="secondary groups-manage-button" onClick={() => setManageGroups(true)}>
+                <Icon name="employees" size={18} />
                 Gerenciar grupos
               </button>
               <button className="primary" onClick={() => open()}>
