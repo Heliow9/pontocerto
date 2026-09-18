@@ -36,6 +36,8 @@ api.interceptors.response.use(
   (e) => {
     if (e.response?.status === 401 && !e.config?.url?.includes("/auth/login"))
       window.dispatchEvent(new Event("pc:unauthorized"));
+    if (e.response?.status === 402 && e.response?.data?.code === "FINANCIAL_BLOCKED")
+      window.dispatchEvent(new CustomEvent("pc:financial-blocked", { detail: e.response.data }));
     return Promise.reject(e);
   },
 );

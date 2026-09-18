@@ -24,6 +24,7 @@ const paths: Record<string, string> = {
   users: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M19 8v6 M22 11h-6",
   plans: "M4 7h16 M4 12h16 M4 17h10 M3 4h18v16H3z",
   subscription: "M3 6h18v12H3z M7 10h4 M7 14h7",
+  finance: "M4 5h16v14H4z M7 9h10 M7 13h4 M14 13h3 M7 17h3 M13 17h4 M12 2v3",
   proposal: "M6 2h9l5 5v15H6z M14 2v6h6 M9 13h6 M9 17h4",
   contract: "M6 2h9l5 5v15H6z M14 2v6h6 M9 12h6 M9 16h6 M9 20h3",
   audit: "M12 3 4 6v5c0 5 3.5 8 8 10 4.5-2 8-5 8-10V9z M9 13l2 2 4-4",

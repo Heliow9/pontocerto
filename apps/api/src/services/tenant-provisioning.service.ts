@@ -31,6 +31,11 @@ export async function createTenantInTransaction(conn:any,d:any) {
        VALUES (?, ?, NULL, ?, ?, ?, 'TENANT_ADMIN', 1, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
       [tenantId, companyId, d.adminName, d.adminEmail, hash]
     );
+    await conn.query(
+      `INSERT INTO saas_billing_profiles (tenant_id,due_day,grace_days,auto_block_enabled,auto_monthly_enabled,inter_cancel_days,created_at,updated_at)
+       VALUES (?,10,3,1,1,30,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,
+      [tenantId]
+    );
     if (d.planId) {
       await conn.query(
         `INSERT INTO subscriptions

@@ -6,6 +6,7 @@ import { signToken } from "../utils/jwt.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { passwordRouter } from "./password.routes.js";
 import { denyAllSupervisorPermissions,readJson } from "../services/commercial-rules.js";
+import { getTenantFinancialAccess } from "../services/financial-access.service.js";
 import {
   createSession,
   isSessionToken,
@@ -99,5 +100,10 @@ authRouter.get("/me", authMiddleware, async (req, res) => {
   );
   const user=rows[0];
   if(user?.role==="SUPERVISOR") { const [permissions]=await pool.query<any[]>("SELECT permissions_json,sensitive_permissions_json FROM user_permissions WHERE tenant_id=? AND user_id=?",[req.auth!.tenantId,req.auth!.userId]);user.permissions=permissions[0]?.permissions_json?readJson(permissions[0].permissions_json,denyAllSupervisorPermissions):denyAllSupervisorPermissions;user.sensitivePermissions=readJson(permissions[0]?.sensitive_permissions_json,{}); }
+  if(user && user.role!=="SUPER_ADMIN") {
+    const financial=await getTenantFinancialAccess(req.auth!.tenantId);
+    user.financialBlocked=financial.blocked;
+    if(user.role==="TENANT_ADMIN") user.financial={blocked:financial.blocked,graceDays:financial.graceDays,dueDay:financial.dueDay,globalException:financial.globalException,blockingCount:financial.blockingCharges.length};
+  } else if(user) user.financialBlocked=false;
   res.json(user || null);
 });

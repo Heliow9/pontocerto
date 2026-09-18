@@ -1,23 +1,49 @@
-node_modules
-.env
-.env.*
-!.env.example
-dist
-.expo
-.expo-shared
-web-build
-.vscode
-.DS_Store
-*.log
+# Dependencies
+**/node_modules/
 
-*.tsbuildinfo
-playwright-report/
-test-results/
+# Local environment / secrets
+**/.env
+!**/.env.example
 
-dist-android-check/
+# Build and local caches
+**/dist/
+**/dist-*/
+**/.expo/
+**/.test-dist/
+**/*.tsbuildinfo
 
-.dependency-backup/
-.deploy-backups/
+# Runtime evidence / generated files
+api/storage/
 
-**/google-services.json
-*.zip
+# Legacy package copied inside the source bundle
+mobile.zip
+
+# Bank certificates / private material
+**/*.key
+**/*.crt
+**/*.pem
+**/secrets/
+
+
+# Testes locais
+/apps/tests/
+
+
+# =========================================================
+# BACKUPS / ARQUIVOS TEMPORÁRIOS
+# =========================================================
+/.dependency-backup/
+*.backup
+*.bak
+*.tmp
+
+# =========================================================
+# TESTES LOCAIS
+# =========================================================
+/apps/tests/
+
+# =========================================================
+# DOCUMENTAÇÃO INTERNA / PLANOS DE DESENVOLVIMENTO
+# =========================================================
+/apps/docs/
+/docs/

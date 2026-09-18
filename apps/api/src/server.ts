@@ -5,6 +5,7 @@ import { startSystemLogCleanupWorker } from "./services/system-log.service.js";
 import { app } from "./app.js";
 import { startAuditRetentionWorker } from "./services/audit-retention.service.js";
 import { env } from "./config/env.js";
+import { startFinancialWorker } from "./services/financial-worker.service.js";
 
 app.listen(env.PORT, () => {
   startReminderWorker();
@@ -12,5 +13,6 @@ app.listen(env.PORT, () => {
   startWhatsAppWorker();
   startSystemLogCleanupWorker();
   startAuditRetentionWorker();
+  startFinancialWorker();
   console.log(`Ponto Certo API rodando na porta ${env.PORT}`);
 });

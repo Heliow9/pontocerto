@@ -8,6 +8,8 @@ import {SaasGeneral} from "./SaasGeneral";
 import {AuditPage} from "./AuditPage";
 import {PasswordPage} from "./PasswordPage";
 import {ContractsPage} from "./ContractsPage";
+import {SaasFinance} from "./SaasFinance";
+import {SaasFinanceInter} from "./SaasFinanceInter";
 import {ResourceState,useResource,money} from "./CommercialUi";
 import "./commercial.css";
 
@@ -18,12 +20,18 @@ const sections:Record<string,{label:string;icon:string;group:string}>={
   subscriptions:{label:"Assinaturas e Recursos",icon:"subscription",group:"Comercial"},
   proposals:{label:"Propostas Comerciais",icon:"proposal",group:"Negociações"},
   contracts:{label:"Contratos",icon:"contract",group:"Negociações"},
+  finance:{label:"Dashboard Financeiro",icon:"finance",group:"Financeiro"},
+  "finance-charges":{label:"Cobranças",icon:"subscription",group:"Financeiro"},
+  "finance-receipts":{label:"Recebimentos",icon:"check",group:"Financeiro"},
+  "finance-delinquent":{label:"Inadimplentes",icon:"occurrences",group:"Financeiro"},
+  "finance-inter":{label:"Banco Inter",icon:"finance",group:"Financeiro"},
+  "finance-logs":{label:"Logs Financeiros",icon:"audit",group:"Financeiro"},
   audit:{label:"Auditoria SaaS",icon:"audit",group:"Administração"},
   settings:{label:"Configurações SaaS",icon:"settings",group:"Administração"},
   email:{label:"Configuração de e-mail",icon:"mail",group:"Administração"},
   password:{label:"Alterar senha",icon:"password",group:"Conta"},
 };
-const current=()=>location.hash.replace("#saas/","");
+const current=()=>location.hash.replace("#saas/","").split("?")[0];
 
 export default function SaasPortal({logout}:{logout:()=>void}){
   const [page,setPage]=useState(sections[current()]?current():"overview"),[message,setMessage]=useState<{text:string;error:boolean}|null>(null),[navOpen,setNavOpen]=useState(false);
@@ -43,7 +51,7 @@ export default function SaasPortal({logout}:{logout:()=>void}){
       {navOpen&&<button className="commercial-nav-backdrop" aria-label="Fechar menu" onClick={()=>setNavOpen(false)}/>} 
       <main className="commercial-main" id="main-content">
         {message&&<div className={`commercial-toast ${message.error?"error":"success"}`} role={message.error?"alert":"status"}>{message.text}</div>}
-        {page==="overview"?<Overview/>:page==="clients"?<SaasPage notify={(text,t)=>setMessage({text,error:t==="error"})}/>:page==="plans"?<SaasPlans/>:page==="proposals"?<ProposalsPage/>:page==="subscriptions"?<Subscriptions/>:page==="contracts"?<ContractsPage/>:page==="audit"?<AuditPage global/>:page==="settings"?<SaasGeneral/>:page==="email"?<SaasEmail/>:<PasswordPage/>}
+        {page==="overview"?<Overview/>:page==="clients"?<SaasPage notify={(text,t)=>setMessage({text,error:t==="error"})}/>:page==="plans"?<SaasPlans/>:page==="proposals"?<ProposalsPage/>:page==="subscriptions"?<Subscriptions/>:page==="contracts"?<ContractsPage/>:page==="finance"?<SaasFinance view="dashboard"/>:page==="finance-charges"?<SaasFinance view="charges"/>:page==="finance-receipts"?<SaasFinance view="receipts"/>:page==="finance-delinquent"?<SaasFinance view="delinquent"/>:page==="finance-inter"?<SaasFinanceInter/>:page==="finance-logs"?<SaasFinance view="logs"/>:page==="audit"?<AuditPage global/>:page==="settings"?<SaasGeneral/>:page==="email"?<SaasEmail/>:<PasswordPage/>}
       </main>
     </div>
   </div>;

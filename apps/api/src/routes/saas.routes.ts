@@ -10,10 +10,12 @@ import { pool } from "../db/pool.js";
 import { authMiddleware } from "../middlewares/auth.js";
 import { requireRole } from "../middlewares/require-role.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
+import { saasFinanceRouter } from "./saas-finance.routes.js";
 
 export const saasRouter = Router();
 saasRouter.use(authMiddleware, requireRole("SUPER_ADMIN"));
 saasRouter.use(commercialRouter);
+saasRouter.use("/finance",saasFinanceRouter);
 saasRouter.use("/proposals",proposalsRouter);
 saasRouter.use("/contracts",contractsRouter);
 saasRouter.get("/audit",safe((req,res)=>auditList(req,res,true)));
@@ -31,8 +33,11 @@ saasRouter.get("/tenants", async (_req, res) => {
             COUNT(DISTINCT c.id) AS company_count,
             COUNT(DISTINCT e.id) AS employee_count,
             p.name AS plan_name, s.status AS subscription_status,
-            s.trial_ends_at, s.current_period_end
+            s.trial_ends_at, s.current_period_end, bp.due_day,
+            (SELECT COALESCE(SUM(fc.amount),0) FROM financial_charges fc WHERE fc.tenant_id=t.id AND fc.status='OVERDUE') AS overdue_amount,
+            (SELECT COUNT(*) FROM financial_charges fc WHERE fc.tenant_id=t.id AND fc.status IN ('OPEN','OVERDUE') AND fc.block_at<=DATE(${BRASILIA_NOW_SQL}) AND NOT EXISTS(SELECT 1 FROM financial_access_exceptions fe WHERE fe.tenant_id=t.id AND fe.revoked_at IS NULL AND ${BRASILIA_NOW_SQL} BETWEEN fe.starts_at AND fe.ends_at AND (fe.charge_id IS NULL OR fe.charge_id=fc.id))) AS blocking_charges
        FROM tenants t
+       LEFT JOIN saas_billing_profiles bp ON bp.tenant_id=t.id
        LEFT JOIN companies c ON c.tenant_id=t.id AND c.active=1
        LEFT JOIN employees e ON e.tenant_id=t.id AND e.active=1
        LEFT JOIN subscriptions s ON s.tenant_id=t.id AND s.id=(
@@ -40,7 +45,7 @@ saasRouter.get("/tenants", async (_req, res) => {
        )
        LEFT JOIN plans p ON p.id=s.plan_id
       WHERE NOT EXISTS (SELECT 1 FROM users su WHERE su.tenant_id=t.id AND su.role='SUPER_ADMIN')
-      GROUP BY t.id, t.name, t.slug, t.status, t.created_at, p.name, s.status, s.trial_ends_at, s.current_period_end
+      GROUP BY t.id, t.name, t.slug, t.status, t.created_at, p.name, s.status, s.trial_ends_at, s.current_period_end, bp.due_day
       ORDER BY t.created_at DESC`
   );
   res.json(rows);

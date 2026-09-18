@@ -123,6 +123,7 @@ export function SaasPage({
                   <th>Funcionários</th>
                   <th>Criado em</th>
                   <th>Status</th>
+                  <th>Financeiro</th>
                   <th></th>
                 </tr>
               </thead>
@@ -149,6 +150,13 @@ export function SaasPage({
                       >
                         {t.status}
                       </Badge>
+                    </td>
+                    <td>
+                      <div className="finance-client-summary">
+                        <strong>{Number(t.blocking_charges)>0?"Bloqueado":Number(t.overdue_amount)>0?"Em atraso":"Regular"}</strong>
+                        <span>Dia {t.due_day||10} · {Number(t.overdue_amount||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"})}</span>
+                        <a href={`#saas/finance-charges?tenant=${t.id}`}>Ver financeiro</a>
+                      </div>
                     </td>
                     <td>
                       <select

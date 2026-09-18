@@ -12,7 +12,13 @@
     "db:migrate": "tsx scripts/migrate-db.ts",
     "db:status": "tsx scripts/migrate-db.ts --check",
     "push:setup": "tsx scripts/setup-push.ts",
-    "test:commercial-email": "tsc tests/commercial-email.test.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist && node --test .test-dist/tests/commercial-email.test.js"
+    "test:commercial-email": "tsc tests/commercial-email.test.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist && node --test .test-dist/tests/commercial-email.test.js",
+    "test:financial-rules": "rm -rf .test-dist/financial-rules && tsc tests/financial-rules.test.ts src/services/financial-rules.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-rules && node --test .test-dist/financial-rules/tests/financial-rules.test.js",
+    "test:inter-core": "rm -rf .test-dist/inter-core && tsc tests/inter-billing-core.test.ts src/services/inter-billing-core.ts src/services/financial-rules.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/inter-core && node --test .test-dist/inter-core/tests/inter-billing-core.test.js",
+    "test:financial-service-core": "rm -rf .test-dist/financial-service-core && tsc tests/financial-service-core.test.ts src/services/financial-service-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-service-core && node --test .test-dist/financial-service-core/tests/financial-service-core.test.js",
+    "test:financial-access-core": "rm -rf .test-dist/financial-access-core && tsc tests/financial-access-core.test.ts src/services/financial-access-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-access-core && node --test .test-dist/financial-access-core/tests/financial-access-core.test.js",
+    "test:inter-webhook-core": "rm -rf .test-dist/inter-webhook-core && tsc tests/inter-webhook-core.test.ts src/services/inter-webhook-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/inter-webhook-core && node --test .test-dist/inter-webhook-core/tests/inter-webhook-core.test.js",
+    "test:financial-worker-core": "rm -rf .test-dist/financial-worker-core && tsc tests/financial-worker-core.test.ts src/services/financial-worker-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-worker-core && node --test .test-dist/financial-worker-core/tests/financial-worker-core.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-rekognition": "^3.1132.0",

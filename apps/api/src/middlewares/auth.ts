@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { isSessionToken, readSession } from "../services/session.service.js";
+import { financialAccessMiddleware } from "./financial-access.js";
 
 type TokenPayload = {
   userId: number;
@@ -49,5 +50,5 @@ export async function authMiddleware(
 
 function authorize(req:Request,res:Response,next:NextFunction){
   if(req.baseUrl==="/auth")return next();
-  return requireRole(req.auth!.role)(req,res,next);
+  return requireRole(req.auth!.role)(req,res,()=>financialAccessMiddleware(req,res,next));
 }

@@ -11,6 +11,7 @@ import { Modal } from "./components/Modal";
 import { AccessProvider } from "./components/Access";
 import { Icon } from "./components/Icon";
 import { WorkspaceTools } from "./components/WorkspaceTools";
+import { BillingBlockedPage } from "./pages/BillingBlockedPage";
 
 const SaasPortal = lazy(() => import("./pages/SaasPortal"));
 
@@ -160,16 +161,19 @@ export function App() {
       logout();
       setError("Sua sessão expirou. Entre novamente.");
     };
+    const financialBlocked = () => setUser((current:any) => current ? {...current, financialBlocked:true} : current);
     window.addEventListener("hashchange", hash);
     window.addEventListener("online", connection);
     window.addEventListener("offline", connection);
     window.addEventListener("pc:unauthorized", expired);
+    window.addEventListener("pc:financial-blocked", financialBlocked);
     return () => {
       clearTimeout(timer.current);
       window.removeEventListener("hashchange", hash);
       window.removeEventListener("online", connection);
       window.removeEventListener("offline", connection);
       window.removeEventListener("pc:unauthorized", expired);
+      window.removeEventListener("pc:financial-blocked", financialBlocked);
     };
   }, []);
   function go(p: Page) {
@@ -326,6 +330,8 @@ export function App() {
         )}
       </main>
     );
+  if (user.role !== "SUPER_ADMIN" && user.financialBlocked)
+    return <BillingBlockedPage user={user} logout={logout} onRetry={restore}/>;
   if (user.role === "FUNCIONARIO")
     return (
       <main className="session-state">
