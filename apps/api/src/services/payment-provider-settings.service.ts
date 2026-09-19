@@ -38,10 +38,12 @@ export async function getDefaultPaymentSelection(){
   const [rows]=await pool.query<any[]>("SELECT default_payment_provider,default_payment_method FROM financial_settings WHERE id=1 LIMIT 1");
   const row=rows[0];
   if(!row||!isPaymentProviderCode(row.default_payment_provider)||!isPaymentMethodCode(row.default_payment_method))throw settingsError("Defina o provedor e o método de pagamento padrão em Financeiro > Provedores.",409,"DEFAULT_PROVIDER_MISSING");
-  assertProviderMethod(row.default_payment_provider,row.default_payment_method);
-  const status=getPaymentProvider(row.default_payment_provider).connectionStatus();
-  if(!status.enabledByEnvironment||!status.configured)throw settingsError(`O provedor padrão ${PROVIDER_LABELS[row.default_payment_provider]} não está pronto para uso.`,409,"DEFAULT_PROVIDER_UNAVAILABLE");
-  return {provider:row.default_payment_provider as PaymentProviderCode,method:row.default_payment_method as PaymentMethodCode};
+  const providerCode: PaymentProviderCode=row.default_payment_provider;
+  const methodCode: PaymentMethodCode=row.default_payment_method;
+  assertProviderMethod(providerCode,methodCode);
+  const status=getPaymentProvider(providerCode).connectionStatus();
+  if(!status.enabledByEnvironment||!status.configured)throw settingsError(`O provedor padrão ${PROVIDER_LABELS[providerCode]} não está pronto para uso.`,409,"DEFAULT_PROVIDER_UNAVAILABLE");
+  return {provider:providerCode,method:methodCode};
 }
 
 export async function testPaymentProvider(code:PaymentProviderCode){

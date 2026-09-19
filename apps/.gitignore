@@ -25,3 +25,7 @@ mobile.zip
 **/*.p12
 **/*.pfx
 **/secrets/
+
+# Local dependency snapshots / delivery archives
+.dependency-backup/
+*.zip
