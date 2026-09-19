@@ -10,19 +10,22 @@ import {
   type ChargeStatus,
   type ChargeType,
 } from "./financial-rules.js";
-import { monthlyDescription, providerYourNumber } from "./financial-service-core.js";
+import { isFirstPaymentTransition, monthlyDescription, providerYourNumber } from "./financial-service-core.js";
 import { assertProviderMethod, isPaymentMethodCode, isPaymentProviderCode, providerStatusToChargeStatus, validateProviderSnapshot } from "./payment-provider-core.js";
 import { getDefaultPaymentSelection } from "./payment-provider-settings.service.js";
 import { getPaymentProvider } from "./provider-registry.js";
 import type { PaymentMethodCode, PaymentProviderCode, ProviderChargeSnapshot } from "./payment-provider.types.js";
 import { ProviderHttpError } from "./provider-http.js";
-import { billingProfileCompleteness, missingPayerFieldsForMethod, normalizeFinancialPayer, payerFromBillingProfile, providerPayerFromSnapshot, type FinancialPayerInput, type FinancialPayerSnapshot } from "./financial-payer-core.js";
+import { billingProfileCompleteness, missingPayerFieldsForMethod, normalizeFinancialPayer, payerFromBillingProfile, payerFromCommercialCustomer, providerPayerFromSnapshot, type FinancialPayerInput, type FinancialPayerSnapshot } from "./financial-payer-core.js";
+import { advanceProductSubscriptionPeriod, getProductSubscription } from "./product-subscription.service.js";
+import { calculateFirstCycleProrata,canGenerateAutomaticCharge,effectiveSubscriptionPrice,resolveProductPaymentSelection } from "./product-subscription-core.js";
+import { syncSubscriptionOperationalState } from "./product-integration.service.js";
 
 const financeError=(message:string,status=400,code="FINANCE_ERROR")=>Object.assign(new Error(message),{status,code});
 const json=(value:unknown)=>value==null?null:JSON.stringify(value);
 
-export async function recordFinancialEvent(input:{tenantId:number|null;chargeId?:number|null;eventType:string;actorUserId?:number|null;details?:unknown},db:any=pool){
-  await db.query(`INSERT INTO financial_events(tenant_id,charge_id,event_type,actor_user_id,details_json,created_at) VALUES(?,?,?,?,?,${BRASILIA_NOW_SQL})`,[input.tenantId,input.chargeId||null,input.eventType,input.actorUserId||null,json(input.details)]);
+export async function recordFinancialEvent(input:{tenantId:number|null;chargeId?:number|null;productSubscriptionId?:number|null;eventType:string;actorUserId?:number|null;details?:unknown},db:any=pool){
+  await db.query(`INSERT INTO financial_events(tenant_id,charge_id,product_subscription_id,event_type,actor_user_id,details_json,created_at) VALUES(?,?,?,?,?,?,${BRASILIA_NOW_SQL})`,[input.tenantId,input.chargeId||null,input.productSubscriptionId||null,input.eventType,input.actorUserId||null,json(input.details)]);
 }
 
 export async function ensureBillingProfile(tenantId:number,db:any=pool){
@@ -57,12 +60,14 @@ async function resolveSelection(override?:{provider?:PaymentProviderCode;method?
   return getDefaultPaymentSelection();
 }
 
-async function insertCharge(db:any,input:{tenantId:number|null;type:ChargeType;competence?:string|null;description:string;amount:number;dueDate:string;blockAt:string;actorUserId?:number|null;provider:PaymentProviderCode;paymentMethod:PaymentMethodCode;payer:FinancialPayerSnapshot;sendEmailAfterIssue:boolean}){
-  if(input.tenantId==null&&(input.type!=="AD_HOC"||input.payer.source!=="EXTERNAL"))throw financeError("Apenas cobrança avulsa para pagador externo pode ser criada sem Cliente SaaS.",400,"EXTERNAL_PAYER_ONLY_AD_HOC");
-  if(input.payer.source==="EXTERNAL"&&input.tenantId!=null)throw financeError("Pagador externo não deve receber tenantId.",400,"EXTERNAL_PAYER_WITH_TENANT");
+async function insertCharge(db:any,input:{tenantId:number|null;commercialCustomerId?:number|null;productSubscriptionId?:number|null;productCode?:string|null;type:ChargeType;competence?:string|null;description:string;amount:number;dueDate:string;blockAt:string;actorUserId?:number|null;provider:PaymentProviderCode;paymentMethod:PaymentMethodCode;payer:FinancialPayerSnapshot;sendEmailAfterIssue:boolean}){
+  const ownedByProduct=Boolean(input.productSubscriptionId);
+  if(input.tenantId==null&&!ownedByProduct&&(input.type!=="AD_HOC"||input.payer.source!=="EXTERNAL"))throw financeError("Cobrança sem tenant exige uma assinatura de produto ou pagador externo avulso.",400,"CHARGE_OWNER_REQUIRED");
+  if(input.payer.source==="EXTERNAL"&&(input.tenantId!=null||ownedByProduct))throw financeError("Pagador externo avulso não deve estar vinculado a tenant/assinatura.",400,"EXTERNAL_PAYER_WITH_OWNER");
+  if(input.payer.source==="COMMERCIAL"&&!ownedByProduct)throw financeError("Pagador comercial exige assinatura de produto.",400,"COMMERCIAL_PAYER_SUBSCRIPTION_REQUIRED");
   const idempotencyKey=randomUUID();
   const p=input.payer;
-  const [result]=await db.query(`INSERT INTO financial_charges(tenant_id,payer_source,payer_person_type,payer_name,payer_document,payer_email,payer_phone,payer_zip_code,payer_street,payer_number,payer_complement,payer_district,payer_city,payer_state,send_email_after_issue,type,competence,description,amount,due_date,block_at,status,provider,requested_payment_method,idempotency_key,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, 'DRAFT',?,?,?,?,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,[input.tenantId,p.source,p.personType,p.name,p.document,p.email,p.phone,p.zipCode,p.street,p.number,p.complement,p.district,p.city,p.state,input.sendEmailAfterIssue?1:0,input.type,input.competence||null,input.description,normalizedMoney(input.amount),input.dueDate,input.blockAt,input.provider,input.paymentMethod,idempotencyKey,input.actorUserId||null]);
+  const [result]=await db.query(`INSERT INTO financial_charges(tenant_id,commercial_customer_id,product_subscription_id,product_code,payer_source,payer_person_type,payer_name,payer_document,payer_email,payer_phone,payer_zip_code,payer_street,payer_number,payer_complement,payer_district,payer_city,payer_state,send_email_after_issue,type,competence,description,amount,due_date,block_at,status,provider,requested_payment_method,idempotency_key,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?,?,?,?,?,?, 'DRAFT',?,?,?,?,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,[input.tenantId,input.commercialCustomerId||null,input.productSubscriptionId||null,input.productCode||null,p.source,p.personType,p.name,p.document,p.email,p.phone,p.zipCode,p.street,p.number,p.complement,p.district,p.city,p.state,input.sendEmailAfterIssue?1:0,input.type,input.competence||null,input.description,normalizedMoney(input.amount),input.dueDate,input.blockAt,input.provider,input.paymentMethod,idempotencyKey,input.actorUserId||null]);
   const id=Number(result.insertId);const ref=providerYourNumber(id);await db.query(`UPDATE financial_charges SET provider_your_number=? WHERE id=?`,[ref,id]);return id;
 }
 
@@ -70,6 +75,36 @@ export async function createMonthlyCharge(tenantId:number,competence:string,acto
   if(!/^\d{4}-\d{2}$/.test(competence))throw financeError("Competência deve estar no formato AAAA-MM.");const profile=await ensureBillingProfile(tenantId),amount=await tenantMonthlyAmount(tenantId),dueDate=dueDateForCompetence(competence,profile.dueDay),blockAt=calculateBlockAt(dueDate,profile.graceDays),payer=payerFromBillingProfile(profile);let id:number;let alreadyExists=false;
   try{const selection=await resolveSelection();id=await insertCharge(pool,{tenantId,type:"MONTHLY",competence,description:monthlyDescription(competence),amount,dueDate,blockAt,actorUserId,provider:selection.provider,paymentMethod:selection.method,payer,sendEmailAfterIssue:options.sendEmailAfterIssue??profile.autoEmailCharges});await recordFinancialEvent({tenantId,chargeId:id,eventType:"CHARGE_CREATED",actorUserId,details:{type:"MONTHLY",competence,amount,dueDate,provider:selection.provider,paymentMethod:selection.method,payerSource:payer.source}});}catch(error:any){if(error?.code!=="ER_DUP_ENTRY")throw error;const [rows]=await pool.query<any[]>("SELECT id FROM financial_charges WHERE tenant_id=? AND type='MONTHLY' AND competence=? LIMIT 1",[tenantId,competence]);if(!rows[0])throw error;id=Number(rows[0].id);alreadyExists=true;}
   let emailDelivery:any=null;if(options.issue&&!alreadyExists){const issued:any=await issueCharge(id,actorUserId||null);emailDelivery=issued?.emailDelivery||null;}return{...(await getCharge(id)),alreadyExists,emailDelivery};
+}
+
+export async function createProductSubscriptionMonthlyCharge(subscriptionId:number,competence:string,actorUserId?:number|null,options:{issue?:boolean;sendEmailAfterIssue?:boolean}={}){
+  if(!/^\d{4}-\d{2}$/.test(competence))throw financeError("Competência deve estar no formato AAAA-MM.");
+  const subscription:any=await getProductSubscription(subscriptionId);
+  const billingLike={status:subscription.status,monthlyPrice:Number(subscription.monthly_price),discountPercent:Number(subscription.discount_percent),nextDueDate:subscription.next_due_date,startsAt:subscription.starts_at,currentPeriodStart:subscription.current_period_start,firstCycleProrataEnabled:Number(subscription.first_cycle_prorata_enabled||0)};
+  if(!canGenerateAutomaticCharge(billingLike))throw financeError(subscription.status==="PENDING_DATA"?"Cadastro financeiro pendente. Regularize o cliente antes de emitir a mensalidade.":"Assinatura não está apta à cobrança automática.",409,"SUBSCRIPTION_NOT_BILLABLE");
+  const prorata=calculateFirstCycleProrata(billingLike);
+  const amount=prorata.amount;
+  const dueDate=String(subscription.next_due_date).slice(0,10);
+  const graceDays=Number(subscription.grace_days??subscription.default_grace_days??3);
+  const configuredProvider=subscription.billing_provider||subscription.default_provider;
+  const configuredMethod=subscription.billing_method||subscription.default_payment_method;
+  const globalSelection=configuredProvider&&configuredMethod?{}:await getDefaultPaymentSelection();
+  const selected=resolveProductPaymentSelection({billingProvider:subscription.billing_provider,billingMethod:subscription.billing_method},{defaultProvider:subscription.default_provider,defaultMethod:subscription.default_payment_method},globalSelection);
+  if(!isPaymentProviderCode(selected.provider)||!isPaymentMethodCode(selected.method))throw financeError("Provedor ou método inválido na assinatura.",409,"SUBSCRIPTION_PAYMENT_SELECTION_INVALID");
+  const providerStatus=getPaymentProvider(selected.provider).connectionStatus();if(!providerStatus.enabledByEnvironment||!providerStatus.configured)throw financeError("O provedor configurado para esta assinatura não está pronto para emissão.",409,"PROVIDER_UNAVAILABLE");
+  assertProviderMethod(selected.provider,selected.method);
+  const payer=payerFromCommercialCustomer(subscription);
+  const description=prorata.isProrata?`Mensalidade ${subscription.product_name} - ${competence} (pró-rata ${prorata.prorataDays}/${prorata.cycleDays} dias)`:`Mensalidade ${subscription.product_name} - ${competence}`;
+  let id:number,alreadyExists=false;
+  try{
+    id=await insertCharge(pool,{tenantId:subscription.tenant_id==null?null:Number(subscription.tenant_id),commercialCustomerId:Number(subscription.commercial_customer_id),productSubscriptionId:subscriptionId,productCode:String(subscription.product_code),type:"MONTHLY",competence,description,amount,dueDate,blockAt:calculateBlockAt(dueDate,graceDays),actorUserId,provider:selected.provider,paymentMethod:selected.method,payer,sendEmailAfterIssue:options.sendEmailAfterIssue??true});
+    await pool.query(`UPDATE financial_charges SET base_amount=?,is_prorata=?,prorata_days=?,prorata_cycle_days=?,billing_period_start=?,billing_period_end=?,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[prorata.fullAmount,prorata.isProrata?1:0,prorata.prorataDays,prorata.cycleDays,prorata.periodStart,prorata.periodEnd,id]);
+    await recordFinancialEvent({tenantId:subscription.tenant_id==null?null:Number(subscription.tenant_id),chargeId:id,eventType:"PRODUCT_CHARGE_CREATED",productSubscriptionId:subscriptionId,actorUserId,details:{subscriptionId,productCode:subscription.product_code,competence,amount,dueDate,provider:selected.provider,paymentMethod:selected.method,prorata:{enabled:prorata.enabled,applied:prorata.isProrata,days:prorata.prorataDays,cycleDays:prorata.cycleDays,baseAmount:prorata.fullAmount,periodStart:prorata.periodStart,periodEnd:prorata.periodEnd}}});
+  }catch(error:any){if(error?.code!=="ER_DUP_ENTRY")throw error;const [rows]=await pool.query<any[]>("SELECT id FROM financial_charges WHERE product_subscription_id=? AND type='MONTHLY' AND competence=? LIMIT 1",[subscriptionId,competence]);if(!rows[0])throw error;id=Number(rows[0].id);alreadyExists=true;}
+  let emailDelivery:any=null;if(options.issue&&!alreadyExists){const issued:any=await issueCharge(id,actorUserId||null);emailDelivery=issued?.emailDelivery||null;}
+  const result={...(await getCharge(id)),alreadyExists,emailDelivery};
+  if(options.issue&&String(subscription.product_code).toUpperCase()==="MOVYO")await syncSubscriptionOperationalState(subscriptionId,"CHARGE_ISSUED").catch(error=>console.error("[movyo-sync] charge",subscriptionId,error instanceof Error?error.message:error));
+  return result;
 }
 
 export async function createImplementationCharge(input:{tenantId:number;amount:number;dueDate:string;description?:string;actorUserId?:number|null;issue?:boolean;sendEmailAfterIssue?:boolean}){
@@ -82,18 +117,59 @@ export async function createAdHocCharge(input:{tenantId?:number|null;payerSource
   const id=await insertCharge(pool,{tenantId,type:"AD_HOC",description:input.description.trim(),amount,dueDate:input.dueDate,blockAt:calculateBlockAt(input.dueDate,graceDays),actorUserId:input.actorUserId,provider:selection.provider,paymentMethod:selection.method,payer,sendEmailAfterIssue});await recordFinancialEvent({tenantId,chargeId:id,eventType:"CHARGE_CREATED",actorUserId:input.actorUserId,details:{type:"AD_HOC",amount,dueDate:input.dueDate,provider:selection.provider,paymentMethod:selection.method,payerSource:payer.source}});let emailDelivery:any=null;if(input.issue){const issued:any=await issueCharge(id,input.actorUserId||null);emailDelivery=issued?.emailDelivery||null;}return{...(await getCharge(id)),emailDelivery};
 }
 
-export async function getCharge(id:number,db:any=pool){const [rows]=await db.query(`SELECT c.*,t.name AS tenant_name,bp.due_day,bp.grace_days,bp.auto_block_enabled,bp.auto_monthly_enabled FROM financial_charges c LEFT JOIN tenants t ON t.id=c.tenant_id LEFT JOIN saas_billing_profiles bp ON bp.tenant_id=c.tenant_id WHERE c.id=? LIMIT 1`,[id]);if(!rows[0])throw financeError("Cobrança não encontrada.",404,"CHARGE_NOT_FOUND");const row=rows[0];return{...row,id:Number(row.id),tenant_id:row.tenant_id==null?null:Number(row.tenant_id),amount:Number(row.amount),due_day:row.due_day==null?null:Number(row.due_day),grace_days:row.grace_days==null?3:Number(row.grace_days),auto_block_enabled:Boolean(row.auto_block_enabled),auto_monthly_enabled:Boolean(row.auto_monthly_enabled),send_email_after_issue:Boolean(row.send_email_after_issue)};}
+export async function getCharge(id:number,db:any=pool){const [rows]=await db.query(`SELECT c.*,t.name AS tenant_name,cc.legal_name AS commercial_customer_name,cp.name AS product_name,cpp.name AS product_plan_name,bp.due_day,COALESCE(bp.grace_days,ps.grace_days,3) AS grace_days,bp.auto_block_enabled,bp.auto_monthly_enabled FROM financial_charges c LEFT JOIN tenants t ON t.id=c.tenant_id LEFT JOIN saas_billing_profiles bp ON bp.tenant_id=c.tenant_id LEFT JOIN commercial_customers cc ON cc.id=c.commercial_customer_id LEFT JOIN product_subscriptions ps ON ps.id=c.product_subscription_id LEFT JOIN commercial_products cp ON cp.id=ps.product_id LEFT JOIN commercial_product_plans cpp ON cpp.id=ps.product_plan_id WHERE c.id=? LIMIT 1`,[id]);if(!rows[0])throw financeError("Cobrança não encontrada.",404,"CHARGE_NOT_FOUND");const row=rows[0];return{...row,id:Number(row.id),tenant_id:row.tenant_id==null?null:Number(row.tenant_id),amount:Number(row.amount),base_amount:row.base_amount==null?Number(row.amount):Number(row.base_amount),is_prorata:Boolean(Number(row.is_prorata||0)),prorata_days:row.prorata_days==null?null:Number(row.prorata_days),prorata_cycle_days:row.prorata_cycle_days==null?null:Number(row.prorata_cycle_days),due_day:row.due_day==null?null:Number(row.due_day),grace_days:row.grace_days==null?3:Number(row.grace_days),auto_block_enabled:Boolean(row.auto_block_enabled),auto_monthly_enabled:Boolean(row.auto_monthly_enabled),send_email_after_issue:Boolean(row.send_email_after_issue)};}
 
 async function applyProviderDetails(chargeId:number,details:ProviderChargeSnapshot,actorUserId?:number|null){
-  const conn=await pool.getConnection();try{await conn.beginTransaction();const [rows]=await conn.query<any[]>("SELECT * FROM financial_charges WHERE id=? FOR UPDATE",[chargeId]);const charge=rows[0];if(!charge)throw financeError("Cobrança não encontrada.",404,"CHARGE_NOT_FOUND");const externalReference=String(charge.provider_your_number||providerYourNumber(chargeId));const decision=validateProviderSnapshot({localAmount:Number(charge.amount),externalReference,snapshot:details});
+  let syncSubscriptionId:number|null=null;
+  const conn=await pool.getConnection();
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.query<any[]>("SELECT * FROM financial_charges WHERE id=? FOR UPDATE",[chargeId]);
+    const charge=rows[0];
+    if(!charge)throw financeError("Cobrança não encontrada.",404,"CHARGE_NOT_FOUND");
+    const externalReference=String(charge.provider_your_number||providerYourNumber(chargeId));
+    const decision=validateProviderSnapshot({localAmount:Number(charge.amount),externalReference,snapshot:details});
     const common=[details.providerChargeId||null,details.paymentUrl||null,details.pdfUrl||null,details.barcode||null,details.digitableLine||null,details.pixCopyPaste||null,details.pixQrCode||null,json(details.raw)];
-    if(decision.action==="HOLD"){await conn.query(`UPDATE financial_charges SET provider_charge_id=COALESCE(provider_charge_id,?),provider_payment_url=COALESCE(?,provider_payment_url),provider_pdf_url=COALESCE(?,provider_pdf_url),barcode=COALESCE(?,barcode),digitable_line=COALESCE(?,digitable_line),pix_copy_paste=COALESCE(?,pix_copy_paste),pix_qr_code=COALESCE(?,pix_qr_code),provider_payload_json=?,failure_message=?,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[...common,decision.reason,chargeId]);await recordFinancialEvent({tenantId:charge.tenant_id==null?null:Number(charge.tenant_id),chargeId,eventType:"RECONCILIATION_HELD",actorUserId,details:{provider:charge.provider,reason:decision.reason}},conn);await conn.commit();return{charge:await getCharge(chargeId),reconciled:false,reason:decision.reason};}
-    if(decision.action==="PAY"){const paidAt=details.paidAt?new Date(details.paidAt):new Date(),paidDate=Number.isNaN(paidAt.getTime())?new Date():paidAt;const paymentId=details.providerPaymentId||details.providerChargeId||`${charge.provider}:${chargeId}`;const method=details.confirmedPaymentMethod||"OTHER";const origin=method==="PIX"?"PIX":method==="BOLETO"?"BOLETO":"OTHER";await conn.query(`INSERT IGNORE INTO financial_payments(charge_id,tenant_id,provider,requested_payment_method,payment_method,provider_payment_id,amount,provider_fee,net_amount,paid_at,origin,payload_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?, ?,${BRASILIA_NOW_SQL})`,[chargeId,charge.tenant_id,charge.provider,charge.requested_payment_method,method,paymentId,Number(details.receivedAmount??charge.amount),details.providerFee??null,details.netAmount??null,paidDate,origin,json(details.raw)]);await conn.query(`UPDATE financial_charges SET status='PAID',provider_charge_id=COALESCE(?,provider_charge_id),provider_payment_url=COALESCE(?,provider_payment_url),provider_pdf_url=COALESCE(?,provider_pdf_url),barcode=COALESCE(?,barcode),digitable_line=COALESCE(?,digitable_line),pix_copy_paste=COALESCE(?,pix_copy_paste),pix_qr_code=COALESCE(?,pix_qr_code),provider_payload_json=?,failure_message=NULL,paid_at=?,issued_at=COALESCE(issued_at,${BRASILIA_NOW_SQL}),updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[...common,paidDate,chargeId]);await recordFinancialEvent({tenantId:charge.tenant_id==null?null:Number(charge.tenant_id),chargeId,eventType:"PAYMENT_CONFIRMED",actorUserId,details:{provider:charge.provider,paymentMethod:method,amount:details.receivedAmount??charge.amount,providerPaymentId:paymentId,providerFee:details.providerFee??null,netAmount:details.netAmount??null}},conn);
-    }else{let next: ChargeStatus=providerStatusToChargeStatus(details.status);if(next==="OPEN"&&String(charge.due_date)<todayInBrasilia())next="OVERDUE";await conn.query(`UPDATE financial_charges SET status=?,provider_charge_id=COALESCE(?,provider_charge_id),provider_payment_url=COALESCE(?,provider_payment_url),provider_pdf_url=COALESCE(?,provider_pdf_url),barcode=COALESCE(?,barcode),digitable_line=COALESCE(?,digitable_line),pix_copy_paste=COALESCE(?,pix_copy_paste),pix_qr_code=COALESCE(?,pix_qr_code),provider_payload_json=?,failure_message=NULL,issued_at=COALESCE(issued_at,${BRASILIA_NOW_SQL}),canceled_at=IF(?='CANCELED',COALESCE(canceled_at,${BRASILIA_NOW_SQL}),canceled_at),updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[next,...common,next,chargeId]);await recordFinancialEvent({tenantId:charge.tenant_id==null?null:Number(charge.tenant_id),chargeId,eventType:"CHARGE_RECONCILED",actorUserId,details:{provider:charge.provider,providerStatus:details.status,localStatus:next}},conn);}
-    await conn.commit();return{charge:await getCharge(chargeId),reconciled:true,reason:null};
-  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
-}
 
+    if(decision.action==="HOLD"){
+      await conn.query(`UPDATE financial_charges SET provider_charge_id=COALESCE(provider_charge_id,?),provider_payment_url=COALESCE(?,provider_payment_url),provider_pdf_url=COALESCE(?,provider_pdf_url),barcode=COALESCE(?,barcode),digitable_line=COALESCE(?,digitable_line),pix_copy_paste=COALESCE(?,pix_copy_paste),pix_qr_code=COALESCE(?,pix_qr_code),provider_payload_json=?,failure_message=?,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[...common,decision.reason,chargeId]);
+      await recordFinancialEvent({tenantId:charge.tenant_id==null?null:Number(charge.tenant_id),chargeId,productSubscriptionId:charge.product_subscription_id==null?null:Number(charge.product_subscription_id),eventType:"RECONCILIATION_HELD",actorUserId,details:{provider:charge.provider,reason:decision.reason}},conn);
+      await conn.commit();
+      return{charge:await getCharge(chargeId),reconciled:false,reason:decision.reason};
+    }
+
+    if(decision.action==="PAY"){
+      const paidAt=details.paidAt?new Date(details.paidAt):new Date(),paidDate=Number.isNaN(paidAt.getTime())?new Date():paidAt;
+      const paymentId=details.providerPaymentId||details.providerChargeId||`${charge.provider}:${chargeId}`;
+      const method=details.confirmedPaymentMethod||"OTHER";
+      const origin=method==="PIX"?"PIX":method==="BOLETO"?"BOLETO":"OTHER";
+      const firstPaymentTransition=isFirstPaymentTransition(charge.status);
+      if(firstPaymentTransition){
+        await conn.query(`INSERT IGNORE INTO financial_payments(charge_id,tenant_id,commercial_customer_id,product_subscription_id,provider,requested_payment_method,payment_method,provider_payment_id,amount,provider_fee,net_amount,paid_at,origin,payload_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,${BRASILIA_NOW_SQL})`,[chargeId,charge.tenant_id,charge.commercial_customer_id||null,charge.product_subscription_id||null,charge.provider,charge.requested_payment_method,method,paymentId,Number(details.receivedAmount??charge.amount),details.providerFee??null,details.netAmount??null,paidDate,origin,json(details.raw)]);
+        await conn.query(`UPDATE financial_charges SET status='PAID',provider_charge_id=COALESCE(?,provider_charge_id),provider_payment_url=COALESCE(?,provider_payment_url),provider_pdf_url=COALESCE(?,provider_pdf_url),barcode=COALESCE(?,barcode),digitable_line=COALESCE(?,digitable_line),pix_copy_paste=COALESCE(?,pix_copy_paste),pix_qr_code=COALESCE(?,pix_qr_code),provider_payload_json=?,failure_message=NULL,paid_at=?,issued_at=COALESCE(issued_at,${BRASILIA_NOW_SQL}),updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[...common,paidDate,chargeId]);
+        if(charge.product_subscription_id&&String(charge.type)==="MONTHLY"){
+          syncSubscriptionId=Number(charge.product_subscription_id);
+          await advanceProductSubscriptionPeriod(conn,syncSubscriptionId,String(charge.due_date));
+        }
+        await recordFinancialEvent({tenantId:charge.tenant_id==null?null:Number(charge.tenant_id),chargeId,productSubscriptionId:charge.product_subscription_id==null?null:Number(charge.product_subscription_id),eventType:"PAYMENT_CONFIRMED",actorUserId,details:{provider:charge.provider,paymentMethod:method,amount:details.receivedAmount??charge.amount,providerPaymentId:paymentId,providerFee:details.providerFee??null,netAmount:details.netAmount??null}},conn);
+      }else{
+        await conn.query(`UPDATE financial_charges SET provider_charge_id=COALESCE(?,provider_charge_id),provider_payment_url=COALESCE(?,provider_payment_url),provider_pdf_url=COALESCE(?,provider_pdf_url),barcode=COALESCE(?,barcode),digitable_line=COALESCE(?,digitable_line),pix_copy_paste=COALESCE(?,pix_copy_paste),pix_qr_code=COALESCE(?,pix_qr_code),provider_payload_json=?,failure_message=NULL,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[...common,chargeId]);
+      }
+    }else{
+      let next:ChargeStatus=providerStatusToChargeStatus(details.status);
+      if(String(charge.status)==="PAID")next="PAID";
+      else if(next==="OPEN"&&String(charge.due_date)<todayInBrasilia())next="OVERDUE";
+      await conn.query(`UPDATE financial_charges SET status=?,provider_charge_id=COALESCE(?,provider_charge_id),provider_payment_url=COALESCE(?,provider_payment_url),provider_pdf_url=COALESCE(?,provider_pdf_url),barcode=COALESCE(?,barcode),digitable_line=COALESCE(?,digitable_line),pix_copy_paste=COALESCE(?,pix_copy_paste),pix_qr_code=COALESCE(?,pix_qr_code),provider_payload_json=?,failure_message=NULL,issued_at=COALESCE(issued_at,${BRASILIA_NOW_SQL}),canceled_at=IF(?='CANCELED',COALESCE(canceled_at,${BRASILIA_NOW_SQL}),canceled_at),updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[next,...common,next,chargeId]);
+      await recordFinancialEvent({tenantId:charge.tenant_id==null?null:Number(charge.tenant_id),chargeId,productSubscriptionId:charge.product_subscription_id==null?null:Number(charge.product_subscription_id),eventType:"CHARGE_RECONCILED",actorUserId,details:{provider:charge.provider,providerStatus:details.status,localStatus:next}},conn);
+    }
+    await conn.commit();
+  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
+  const result={charge:await getCharge(chargeId),reconciled:true,reason:null};
+  if(syncSubscriptionId){
+    await syncSubscriptionOperationalState(syncSubscriptionId,"PAYMENT_CONFIRMED").catch(error=>console.error("[movyo-sync] payment",syncSubscriptionId,error instanceof Error?error.message:error));
+  }
+  return result;
+}
 function providerForCharge(charge:any){if(!isPaymentProviderCode(charge.provider))throw financeError(`A cobrança usa o provedor histórico ${charge.provider||"desconhecido"}, que está disponível somente para consulta.`,409,"HISTORICAL_PROVIDER_READ_ONLY");if(!isPaymentMethodCode(charge.requested_payment_method))throw financeError("A cobrança não possui método de pagamento válido.",409,"PAYMENT_METHOD_MISSING");assertProviderMethod(charge.provider,charge.requested_payment_method);return{provider:getPaymentProvider(charge.provider),code:charge.provider as PaymentProviderCode,method:charge.requested_payment_method as PaymentMethodCode};}
 
 export async function issueCharge(chargeId:number,actorUserId?:number|null){
@@ -106,7 +182,29 @@ export async function reconcileCharge(chargeId:number,actorUserId?:number|null){
 
 export async function cancelCharge(chargeId:number,actorUserId?:number|null,reason="SOLICITACAO_ADMIN"){const charge=await getCharge(chargeId);if(charge.status==="PAID")throw financeError("Cobrança paga não pode ser cancelada.",409,"PAID_CHARGE");if(charge.status==="CANCELED")return charge;if(charge.provider_charge_id){const {provider,method}=providerForCharge(charge);await provider.cancel(charge.provider_charge_id,method);}await pool.query(`UPDATE financial_charges SET status='CANCELED',canceled_at=${BRASILIA_NOW_SQL},updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[chargeId]);await recordFinancialEvent({tenantId:charge.tenant_id,chargeId,eventType:"CHARGE_CANCELED",actorUserId,details:{provider:charge.provider,providerCancelRequested:Boolean(charge.provider_charge_id),reason}});return getCharge(chargeId);}
 
-export async function recordManualPayment(chargeId:number,actorUserId:number,paidAt?:string){const charge=await getCharge(chargeId);if(charge.status==="PAID")return charge;if(charge.status==="CANCELED")throw financeError("Cobrança cancelada não pode receber baixa manual.",409,"CANCELED_CHARGE");const when=paidAt?new Date(paidAt):new Date();if(Number.isNaN(when.getTime()))throw financeError("Data de pagamento inválida.");const paymentId=`MANUAL:${chargeId}:${createHash("sha256").update(`${actorUserId}:${when.toISOString()}`).digest("hex").slice(0,24)}`;const conn=await pool.getConnection();try{await conn.beginTransaction();await conn.query(`INSERT INTO financial_payments(charge_id,tenant_id,provider,requested_payment_method,payment_method,provider_payment_id,amount,net_amount,paid_at,origin,payload_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,'MANUAL',?,${BRASILIA_NOW_SQL})`,[chargeId,charge.tenant_id,charge.provider,charge.requested_payment_method,"MANUAL",paymentId,charge.amount,charge.amount,when,json({actorUserId})]);await conn.query(`UPDATE financial_charges SET status='PAID',paid_at=?,failure_message=NULL,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[when,chargeId]);await recordFinancialEvent({tenantId:charge.tenant_id,chargeId,eventType:"PAYMENT_CONFIRMED_MANUAL",actorUserId,details:{provider:charge.provider,amount:charge.amount,paidAt:when.toISOString()}},conn);await conn.commit();}catch(error){await conn.rollback();throw error;}finally{conn.release();}return getCharge(chargeId);}
+export async function recordManualPayment(chargeId:number,actorUserId:number,paidAt?:string){
+  const when=paidAt?new Date(paidAt):new Date();if(Number.isNaN(when.getTime()))throw financeError("Data de pagamento inválida.");
+  let syncSubscriptionId:number|null=null;
+  const conn=await pool.getConnection();
+  try{
+    await conn.beginTransaction();
+    const [rows]=await conn.query<any[]>("SELECT * FROM financial_charges WHERE id=? FOR UPDATE",[chargeId]);
+    const charge=rows[0];if(!charge)throw financeError("Cobrança não encontrada.",404,"CHARGE_NOT_FOUND");
+    if(charge.status==="PAID"){await conn.commit();return getCharge(chargeId);}
+    if(charge.status==="CANCELED")throw financeError("Cobrança cancelada não pode receber baixa manual.",409,"CANCELED_CHARGE");
+    const paymentId=`MANUAL:${chargeId}:${createHash("sha256").update(`${actorUserId}:${when.toISOString()}`).digest("hex").slice(0,24)}`;
+    await conn.query(`INSERT INTO financial_payments(charge_id,tenant_id,commercial_customer_id,product_subscription_id,provider,requested_payment_method,payment_method,provider_payment_id,amount,net_amount,paid_at,origin,payload_json,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'MANUAL',?,${BRASILIA_NOW_SQL})`,[chargeId,charge.tenant_id,charge.commercial_customer_id||null,charge.product_subscription_id||null,charge.provider,charge.requested_payment_method,"MANUAL",paymentId,charge.amount,charge.amount,when,json({actorUserId})]);
+    await conn.query(`UPDATE financial_charges SET status='PAID',paid_at=?,failure_message=NULL,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[when,chargeId]);
+    if(charge.product_subscription_id&&String(charge.type)==="MONTHLY"){
+      syncSubscriptionId=Number(charge.product_subscription_id);
+      await advanceProductSubscriptionPeriod(conn,syncSubscriptionId,String(charge.due_date));
+    }
+    await recordFinancialEvent({tenantId:charge.tenant_id==null?null:Number(charge.tenant_id),chargeId,productSubscriptionId:charge.product_subscription_id==null?null:Number(charge.product_subscription_id),eventType:"PAYMENT_CONFIRMED_MANUAL",actorUserId,details:{provider:charge.provider,amount:charge.amount,paidAt:when.toISOString()}},conn);
+    await conn.commit();
+  }catch(error){await conn.rollback();throw error;}finally{conn.release();}
+  if(syncSubscriptionId)await syncSubscriptionOperationalState(syncSubscriptionId,"PAYMENT_CONFIRMED_MANUAL").catch(error=>console.error("[movyo-sync] manual-payment",syncSubscriptionId,error instanceof Error?error.message:error));
+  return getCharge(chargeId);
+}
 
 export async function getChargePdf(chargeId:number){const charge=await getCharge(chargeId);if(!charge.provider_charge_id)throw financeError("Cobrança ainda não foi emitida.",409,"CHARGE_NOT_ISSUED");const {provider,method}=providerForCharge(charge);if(!provider.getPdf)throw financeError("Este provedor não disponibiliza PDF de boleto para esta cobrança.",404,"PDF_UNAVAILABLE");return provider.getPdf(charge.provider_charge_id,method);}
 

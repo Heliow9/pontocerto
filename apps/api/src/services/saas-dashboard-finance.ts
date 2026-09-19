@@ -100,3 +100,61 @@ export async function loadSaasDashboardFinance(executor:{query:any}):Promise<Saa
   }));
   return {...summary,attention};
 }
+
+export type SaasDashboardProductRow={
+  productCode:string;
+  productName:string;
+  mrr:number;
+  active:number;
+  pastDue:number;
+  blocked:number;
+};
+
+export type SaasDashboardProducts={
+  mrrTotal:number;
+  mrrPontoCerto:number;
+  mrrMovyo:number;
+  mrrPayHub:number;
+  activeSubscriptions:number;
+  pastDueSubscriptions:number;
+  blockedSubscriptions:number;
+  products:SaasDashboardProductRow[];
+};
+
+export function normalizeProductDashboardRows(rows:any[]):SaasDashboardProducts{
+  const products:SaasDashboardProductRow[]=rows.map((row:any)=>({
+    productCode:String(row.productCode||row.product_code||''),
+    productName:String(row.productName||row.product_name||row.productCode||row.product_code||'Produto'),
+    mrr:n(row.mrr),
+    active:n(row.active),
+    pastDue:n(row.pastDue??row.past_due),
+    blocked:n(row.blocked),
+  }));
+  const byCode=(code:string)=>products.find(p=>p.productCode===code)?.mrr||0;
+  return{
+    mrrTotal:Math.round(products.reduce((sum,p)=>sum+p.mrr,0)*100)/100,
+    mrrPontoCerto:byCode('PONTO_CERTO'),
+    mrrMovyo:byCode('MOVYO'),
+    mrrPayHub:byCode('PAYHUB'),
+    activeSubscriptions:products.reduce((sum,p)=>sum+p.active,0),
+    pastDueSubscriptions:products.reduce((sum,p)=>sum+p.pastDue,0),
+    blockedSubscriptions:products.reduce((sum,p)=>sum+p.blocked,0),
+    products,
+  };
+}
+
+export async function loadSaasDashboardProducts(executor:{query:any}):Promise<SaasDashboardProducts>{
+  const [rows]=await executor.query(`
+    SELECT cp.code AS productCode,cp.name AS productName,
+      COALESCE(SUM(CASE WHEN ps.status IN ('ACTIVE','GRACE','PAST_DUE','BLOCKED')
+        THEN ROUND(ps.monthly_price*(1-(ps.discount_percent/100)),2) ELSE 0 END),0) AS mrr,
+      COALESCE(SUM(CASE WHEN ps.status IN ('ACTIVE','GRACE') THEN 1 ELSE 0 END),0) AS active,
+      COALESCE(SUM(CASE WHEN ps.status='PAST_DUE' THEN 1 ELSE 0 END),0) AS pastDue,
+      COALESCE(SUM(CASE WHEN ps.status='BLOCKED' THEN 1 ELSE 0 END),0) AS blocked
+    FROM commercial_products cp
+    LEFT JOIN product_subscriptions ps ON ps.product_id=cp.id
+    GROUP BY cp.id,cp.code,cp.name
+    ORDER BY cp.name
+  `);
+  return normalizeProductDashboardRows(rows||[]);
+}

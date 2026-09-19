@@ -8,9 +8,11 @@ import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import {readJson,type Features} from "./commercial-rules.js";
 import {formatBranchLimit,formatDateBr,formatFeatureLines,formatMoney,loadCommercialTemplate} from "./commercial-document-utils.js";
+import {plainTextDocx} from "./commercial-text-docx.js";
 const exec=promisify(execFile);
 
 export async function proposalDocx(proposal:any){
+  if((proposal.product_code||"PONTO_CERTO")!=="PONTO_CERTO"){if(!proposal.rendered_content)throw Object.assign(new Error("Conteúdo da proposta ainda não foi renderizado."),{status:409,code:"DOCUMENT_NOT_RENDERED"});return plainTextDocx(String(proposal.rendered_content));}
   const template=await loadCommercialTemplate("proposta-ponto-certo.docx");
   const features=readJson<Features>(proposal.features_json,{} as Features);
   const planName=proposal.plan_name||proposal.plan_name_snapshot||"Plano contratado";

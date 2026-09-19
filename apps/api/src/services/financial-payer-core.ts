@@ -1,6 +1,6 @@
 import type { PaymentMethodCode, PaymentProviderCode, ProviderPayer } from './payment-provider.types.js';
 
-export type FinancialPayerSource='TENANT'|'EXTERNAL';
+export type FinancialPayerSource='TENANT'|'COMMERCIAL'|'EXTERNAL';
 export type FinancialPersonType='PF'|'PJ';
 export type FinancialPayerInput={
   source:FinancialPayerSource;
@@ -78,6 +78,21 @@ export function payerFromBillingProfile(profile:any):FinancialPayerSnapshot{
     district:text(profile.billingDistrict??profile.billing_district),
     city:text(profile.billingCity??profile.billing_city),
     state:text(profile.billingState??profile.billing_state)?.toUpperCase()??null,
+  };
+}
+
+
+export function payerFromCommercialCustomer(customer:any):FinancialPayerSnapshot{
+  const document=digits(customer.document??customer.customer_document);
+  const personType:FinancialPersonType=document.length===11?'PF':'PJ';
+  return{
+    source:'COMMERCIAL',personType,
+    name:String(customer.legal_name??customer.customer_name??'').trim(),
+    document,
+    email:email(customer.financial_contact_email??customer.email??customer.customer_email??null),
+    phone:digits(customer.financial_contact_phone??customer.phone??customer.customer_phone)||null,
+    zipCode:digits(customer.zip_code)||null,
+    street:text(customer.street),number:text(customer.number),complement:text(customer.complement),district:text(customer.district),city:text(customer.city),state:text(customer.state)?.toUpperCase()??null,
   };
 }
 

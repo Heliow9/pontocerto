@@ -36,3 +36,7 @@ export function reconciliationDecision(input: {
   }
   return { action: "SYNC", reason: null };
 }
+
+export function isFirstPaymentTransition(currentStatus:unknown):boolean{
+  return String(currentStatus||'').toUpperCase()!=='PAID';
+}

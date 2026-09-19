@@ -3,8 +3,10 @@ import PizZip from "pizzip";
 import {proposalPdf} from "./proposal-documents.service.js";
 import {readJson,type Features} from "./commercial-rules.js";
 import {formatBranchLimit,formatContractedFunctionalities,formatDateBr,formatMoney,formatTermMonths,formatUncontractedFeatures,loadCommercialTemplate} from "./commercial-document-utils.js";
+import {plainTextDocx} from "./commercial-text-docx.js";
 
 export async function contractDocx(contract:any){
+  if((contract.product_code||"PONTO_CERTO")!=="PONTO_CERTO"){if(!contract.rendered_content)throw Object.assign(new Error("Conteúdo do contrato ainda não foi renderizado."),{status:409,code:"DOCUMENT_NOT_RENDERED"});return plainTextDocx(String(contract.rendered_content));}
   const template=await loadCommercialTemplate("contrato-ponto-certo.docx");
   const features=readJson<Partial<Features>>(contract.features_json,{});
   const planName=contract.plan_name||contract.plan_name_snapshot||"Plano contratado";

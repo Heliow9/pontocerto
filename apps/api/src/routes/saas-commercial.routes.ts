@@ -6,7 +6,7 @@ import { featuresSchema,featureOverridesSchema,readJson,mergeFeatures } from "..
 import { entitlements } from "../services/entitlements.service.js";
 import { protectSecret } from "../services/saas-secrets.js";
 import { notTestedConnection,smtpConnectionView,verifyPersistedSmtp,smtpConnectionIdentity } from "../services/commercial-email.service.js";
-import { loadSaasDashboardFinance } from "../services/saas-dashboard-finance.js";
+import { loadSaasDashboardFinance,loadSaasDashboardProducts } from "../services/saas-dashboard-finance.js";
 export const commercialRouter=Router();
 export const safe=(fn:(req:Request,res:Response)=>Promise<unknown>)=>(req:Request,res:Response,next:NextFunction)=>{void fn(req,res).catch(next);};
 const idOf=(value:unknown)=>z.coerce.number().int().positive().parse(value);
@@ -20,10 +20,9 @@ commercialRouter.get("/dashboard",safe(async(_req,res)=>{
   const [[operations]]=await pool.query<any[]>("SELECT (SELECT COUNT(*) FROM employees WHERE active=1) AS employees,(SELECT COUNT(*) FROM companies WHERE active=1) AS companies,(SELECT COUNT(*) FROM companies WHERE active=1 AND company_type='BRANCH') AS branches");
   const [[proposals]]=await pool.query<any[]>("SELECT COUNT(*) AS total,SUM(status='APPROVED') AS approved,SUM(status IN ('DRAFT','SENT') AND valid_until>=CURDATE()) AS open,SUM(status='EXPIRED' OR (status IN ('DRAFT','SENT') AND valid_until<CURDATE())) AS expired,SUM(status='CONVERTED' OR converted_tenant_id IS NOT NULL) AS converted FROM commercial_proposals");
   const [[contracts]]=await pool.query<any[]>("SELECT COUNT(*) AS total,SUM(status='SIGNED') AS active,SUM(status IN ('GENERATED','SENT')) AS awaiting_signature,SUM(status='CANCELED') AS canceled,COALESCE(SUM(CASE WHEN status='SIGNED' THEN implementation_fee ELSE 0 END),0) AS implementation_value FROM commercial_contracts");
-  const [[billing]]=await pool.query<any[]>("SELECT COALESCE(SUM(COALESCE(tc.price_monthly,p.price_monthly)),0) AS monthly FROM subscriptions s JOIN tenants t ON t.id=s.tenant_id JOIN plans p ON p.id=s.plan_id LEFT JOIN tenant_contracts tc ON tc.tenant_id=t.id WHERE s.id=(SELECT MAX(id) FROM subscriptions WHERE tenant_id=t.id) AND s.status='ACTIVE' AND t.status='ACTIVE'");
   const [plans]=await pool.query<any[]>("SELECT p.id,p.name,COUNT(*) AS clients FROM tenants t JOIN subscriptions s ON s.tenant_id=t.id AND s.id=(SELECT MAX(id) FROM subscriptions WHERE tenant_id=t.id) JOIN plans p ON p.id=s.plan_id WHERE t.status<>'CANCELED' GROUP BY p.id,p.name ORDER BY clients DESC");
-  const finance=await loadSaasDashboardFinance(pool);
-  res.json({counts:{...counts,trial:trial.trial||0,employees:operations.employees||0,companies:operations.companies||0,branches:operations.branches||0},proposals,contracts,monthly:billing.monthly,plans,finance});
+  const [finance,productMetrics]=await Promise.all([loadSaasDashboardFinance(pool),loadSaasDashboardProducts(pool)]);
+  res.json({counts:{...counts,trial:trial.trial||0,employees:operations.employees||0,companies:operations.companies||0,branches:operations.branches||0},proposals,contracts,monthly:productMetrics.mrrTotal,plans,finance,productMetrics});
 }));
 commercialRouter.get("/tenants/:id/contract",safe(async(req,res)=>{const id=idOf(req.params.id);const [companies]=await pool.query<any[]>("SELECT c.id,c.legal_name,c.cnpj,c.active,ce.features_json FROM companies c LEFT JOIN company_entitlements ce ON ce.company_id=c.id AND ce.tenant_id=c.tenant_id WHERE c.tenant_id=? ORDER BY c.id",[id]);res.json({...(await entitlements(id)),companies:companies.map(c=>({...c,overrides:readJson(c.features_json,{})}))});}));
 const contractSchema=z.object({planId:z.number().int().positive(),maxEmployees:z.number().int().positive().nullable(),priceMonthly:z.number().min(0).max(99999999).nullable(),maxBranches:z.number().int().min(0).nullable(),features:featureOverridesSchema,status:z.enum(["TRIAL","ACTIVE","PAST_DUE","CANCELED"]),currentPeriodEnd:z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable()});
