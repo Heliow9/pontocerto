@@ -10,6 +10,7 @@ import {
 } from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
+import { MaskedInput } from "../components/MaskedInput";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { Company, Employee, Schedule, WorkLocation } from "../types";
@@ -17,6 +18,7 @@ import { Modal } from "../components/Modal";
 import { OvertimeReference } from "../components/OvertimeReference";
 import { Badge, Empty, PageHeader } from "../components/Ui";
 import { apiMessage, brDate } from "../utils";
+import { formatCpf } from "../utils/masks";
 
 const blank = {
   companyId: 0,
@@ -503,7 +505,7 @@ export function EmployeesPage({
                     <td>
                       <strong>{i.name}</strong>
                       <div className="muted">
-                        {i.cpf || "CPF não informado"}
+                        {formatCpf(i.cpf) || "CPF não informado"}
                       </div>
                     </td>
                     <td>{i.company_name}</td>
@@ -620,16 +622,18 @@ export function EmployeesPage({
               </label>
               <label>
                 CPF
-                <input
+                <MaskedInput
+                  mask="cpf"
                   value={form.cpf}
-                  onChange={(e) => setForm({ ...form, cpf: e.target.value })}
+                  onChange={(cpf) => setForm({ ...form, cpf })}
                 />
               </label>
               <label>
                 PIS
-                <input
+                <MaskedInput
+                  mask="pis"
                   value={form.pis}
-                  onChange={(e) => setForm({ ...form, pis: e.target.value })}
+                  onChange={(pis) => setForm({ ...form, pis })}
                 />
               </label>
               <label>

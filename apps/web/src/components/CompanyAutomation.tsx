@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import { apiMessage } from "../utils";
 import { whatsappActionVisibility } from "./whatsapp-ui";
+import { MaskedInput } from "./MaskedInput";
+import { digitsOnly, formatPhone } from "../utils/masks";
 type Recipient = { name: string; phone: string };
 type Settings = {
   overtimeEnabled: boolean;
@@ -185,16 +187,15 @@ export function CompanyAutomation({ id }: { id: number }) {
               </label>
               <label>
                 Telefone com DDI e DDD
-                <input
-                  placeholder="5511999999999"
+                <MaskedInput
+                  mask="phone"
+                  placeholder="+55 (11) 99999-9999"
                   value={r.phone}
-                  onChange={(e) =>
+                  onChange={(phone) =>
                     setData({
                       ...data,
                       recipients: data.recipients.map((v, i) =>
-                        i === index
-                          ? { ...v, phone: e.target.value.replace(/\D/g, "") }
-                          : v,
+                        i === index ? { ...v, phone } : v,
                       ),
                     })
                   }
@@ -236,7 +237,7 @@ export function CompanyAutomation({ id }: { id: number }) {
                 overtimeEnabled: data.overtimeEnabled,
                 remoteEnabled: data.remoteEnabled,
                 offlineEnabled: data.offlineEnabled,
-                recipients: data.recipients,
+                recipients: data.recipients.map(r=>({...r,phone:digitsOnly(r.phone)})),
               })
             }
           >
@@ -246,7 +247,7 @@ export function CompanyAutomation({ id }: { id: number }) {
           {!whatsappContracted && <p role="status">Recurso WhatsApp não contratado. Consulte seu plano ou entre em contato com o Ponto Certo.</p>}
           {whatsappContracted && <p>
             {labels[status?.status] || "Desconectado"}{" "}
-            {status?.phone ? `· ${status.phone}` : ""}
+            {status?.phone ? `· ${formatPhone(status.phone)}` : ""}
           </p>}
           {whatsappContracted && !status?.ready && (
             <p>Serviço aguardando configuração no servidor.</p>

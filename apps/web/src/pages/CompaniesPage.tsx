@@ -7,6 +7,7 @@ import {
 } from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
+import { MaskedInput } from "../components/MaskedInput";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Company } from "../types";
@@ -15,6 +16,7 @@ import { CompanyAutomation } from "../components/CompanyAutomation";
 import { CompanyLogs } from "../components/CompanyLogs";
 import { Badge, Empty, PageHeader } from "../components/Ui";
 import { apiMessage } from "../utils";
+import { formatCnpj } from "../utils/masks";
 const blank = {
   legalName: "",
   tradeName: "",
@@ -252,7 +254,7 @@ export function CompaniesPage({
                       <strong>{c.trade_name || c.legal_name}</strong>{" "}<Badge tone={c.company_type === "MATRIX" ? "success" : "neutral"}>{c.company_type === "MATRIX" ? "Matriz" : "Filial"}</Badge>
                       <div className="muted">{c.legal_name}</div>
                     </td>
-                    <td>{c.cnpj || "-"}</td>
+                    <td>{formatCnpj(c.cnpj) || "-"}</td>
                     <td>
                       {c.address ||
                         [c.city, c.state].filter(Boolean).join("/") ||
@@ -341,16 +343,18 @@ export function CompaniesPage({
             </label>
             <label>
               CNPJ
-              <input
+              <MaskedInput
+                mask="cnpj"
                 value={form.cnpj}
-                onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+                onChange={(cnpj) => setForm({ ...form, cnpj })}
               />
             </label>
             <label>
               Telefone
-              <input
+              <MaskedInput
+                mask="phone"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(phone) => setForm({ ...form, phone })}
               />
             </label>
             <label>
@@ -366,9 +370,10 @@ export function CompaniesPage({
             </div>
             <label>
               CEP
-              <input
+              <MaskedInput
+                mask="cep"
                 value={form.zipCode}
-                onChange={(e) => setForm({ ...form, zipCode: e.target.value })}
+                onChange={(zipCode) => setForm({ ...form, zipCode })}
               />
             </label>
             <label>

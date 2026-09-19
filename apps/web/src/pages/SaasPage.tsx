@@ -5,6 +5,7 @@ import {
 } from "../components/LoadState";
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
+import { MaskedInput } from "../components/MaskedInput";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Modal } from "../components/Modal";
@@ -41,6 +42,7 @@ export function SaasPage({
   const load = () => loadState.run(fetchData);
   useEffect(() => {
     load();
+    if (new URLSearchParams((location.hash.split("?")[1] || "")).get("new") === "1") setOpen(true);
   }, []);
   async function create(e: React.FormEvent) {
     e.preventDefault();
@@ -218,9 +220,10 @@ export function SaasPage({
             </label>
             <label>
               CNPJ
-              <input
+              <MaskedInput
+                mask="cnpj"
                 value={form.cnpj}
-                onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+                onChange={(cnpj) => setForm({ ...form, cnpj })}
               />
             </label>
             <label>
