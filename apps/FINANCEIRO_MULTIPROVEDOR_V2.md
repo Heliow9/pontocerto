@@ -155,3 +155,44 @@ Os arquivos registram o provedor de origem. Recebimentos incluem tarifa e valor 
 ## 10. Segurança
 
 O `.gitignore` desta versão bloqueia `.env`, `.key`, `.crt`, `.pem`, `.p12`, `.pfx` e pastas `secrets/`. As credenciais ficam somente no backend. O frontend recebe apenas estado de configuração, capacidades e status de teste, nunca os segredos.
+
+---
+
+## Evolução V3 — Pagadores e envio de cobranças por e-mail
+
+A partir da V3, **pagador** e **Cliente SaaS (tenant)** são conceitos separados no domínio financeiro.
+
+### Cobrança avulsa externa
+
+`AD_HOC` pode ser emitida para uma PF/PJ que não possui conta no Ponto Certo. Nesse cenário:
+
+- `payer_source = EXTERNAL`;
+- `tenant_id = NULL`;
+- os dados do pagador são armazenados como snapshot na cobrança;
+- a cobrança não participa de inadimplência/bloqueio de tenants.
+
+Mensalidades e implantação continuam usando `payer_source = TENANT` e exigem `tenant_id`.
+
+### Cadastro financeiro do tenant
+
+`saas_billing_profiles` passa a concentrar dados de faturamento, endereço e responsável financeiro. O envio automático de cobranças por e-mail vem habilitado por padrão e pode ser desativado por cliente ou na criação da cobrança.
+
+### Snapshot e providers
+
+Cora, Efí e Mercado Pago recebem os dados normalizados do snapshot persistido em `financial_charges`. Alterar o cadastro mestre depois não altera uma cobrança já criada.
+
+Para boleto Mercado Pago, a validação exige e-mail e endereço completo antes da chamada ao provider. Pix não exige endereço completo.
+
+### E-mail e histórico
+
+Depois que o provider retorna com sucesso e seus artefatos são persistidos, o serviço financeiro pode enviar a cobrança via SMTP. Falha de e-mail não altera o estado monetário nem causa reemissão. Reenvios manuais usam a mesma cobrança e todas as tentativas ficam em `financial_charge_deliveries`.
+
+### Migration
+
+Aplicar:
+
+```text
+023_financial_payers_and_delivery.sql
+```
+
+Consulte `CHANGELOG_FINANCEIRO_PAGADORES_EMAIL_V3.md` para o procedimento completo de deploy e smoke test.

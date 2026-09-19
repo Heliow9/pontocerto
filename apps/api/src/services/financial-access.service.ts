@@ -19,7 +19,7 @@ export async function getTenantFinancialAccess(tenantId: number) {
               WHERE e.tenant_id=c.tenant_id AND e.charge_id=c.id AND e.revoked_at IS NULL
                 AND ${BRASILIA_NOW_SQL} BETWEEN e.starts_at AND e.ends_at) AS excepted
        FROM financial_charges c
-      WHERE c.tenant_id=? AND c.status IN ('OPEN','OVERDUE')
+      WHERE c.tenant_id=? AND c.tenant_id IS NOT NULL AND c.status IN ('OPEN','OVERDUE')
       ORDER BY c.due_date ASC,c.id ASC`, [tenantId],
   );
   const todayRows = await pool.query<any[]>(`SELECT DATE(${BRASILIA_NOW_SQL}) AS today`);

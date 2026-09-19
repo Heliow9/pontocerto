@@ -17,6 +17,14 @@ test('priority forms use shared document and money inputs',()=>{
   assert.match(companies,/mask="phone"/);
   assert.match(companies,/mask="cep"/);
   assert.match(saas,/mask="cnpj"/);
+  assert.match(saas,/mask="cpf"/);
+  assert.match(saas,/mask="phone"/);
+  assert.match(saas,/mask="cep"/);
+  assert.match(finance,/MaskedInput/);
+  assert.match(finance,/mask="cpf"/);
+  assert.match(finance,/mask="cpfCnpj"|personType==="PF"\?"cpf":"cnpj"/);
+  assert.match(finance,/mask="phone"/);
+  assert.match(finance,/mask="cep"/);
   assert.match(plans,/CurrencyInput/);
   assert.match(finance,/CurrencyInput/);
   assert.match(proposals,/CurrencyInput/);

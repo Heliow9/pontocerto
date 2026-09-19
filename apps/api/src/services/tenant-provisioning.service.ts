@@ -31,10 +31,11 @@ export async function createTenantInTransaction(conn:any,d:any) {
        VALUES (?, ?, NULL, ?, ?, ?, 'TENANT_ADMIN', 1, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
       [tenantId, companyId, d.adminName, d.adminEmail, hash]
     );
+    const digits=(value:any)=>String(value??"").replace(/\D/g,"");
     await conn.query(
-      `INSERT INTO saas_billing_profiles (tenant_id,due_day,grace_days,auto_block_enabled,auto_monthly_enabled,provider_expiration_days,created_at,updated_at)
-       VALUES (?,10,3,1,1,30,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,
-      [tenantId]
+      `INSERT INTO saas_billing_profiles (tenant_id,due_day,grace_days,auto_block_enabled,auto_monthly_enabled,provider_expiration_days,billing_legal_name,billing_trade_name,billing_document,billing_email,billing_phone,financial_contact_name,financial_contact_document,financial_contact_email,financial_contact_phone,billing_zip_code,billing_street,billing_number,billing_complement,billing_district,billing_city,billing_state,auto_email_charges,created_at,updated_at)
+       VALUES (?,10,3,1,1,30,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,
+      [tenantId,d.billingLegalName||d.companyName,d.billingTradeName||d.companyName,digits(d.billingDocument||d.cnpj)||null,d.billingEmail||null,digits(d.billingPhone)||null,d.financialContactName||null,digits(d.financialContactDocument)||null,d.financialContactEmail||null,digits(d.financialContactPhone)||null,digits(d.billingZipCode)||null,d.billingStreet||null,d.billingNumber||null,d.billingComplement||null,d.billingDistrict||null,d.billingCity||null,d.billingState?String(d.billingState).toUpperCase():null,d.autoEmailCharges===false?0:1]
     );
     if (d.planId) {
       await conn.query(

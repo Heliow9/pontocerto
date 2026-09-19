@@ -34,6 +34,19 @@ saasRouter.get("/tenants", async (_req, res) => {
             COUNT(DISTINCT e.id) AS employee_count,
             p.name AS plan_name, s.status AS subscription_status,
             s.trial_ends_at, s.current_period_end, bp.due_day,
+            MAX(bp.financial_contact_email) AS financial_contact_email,
+            CASE WHEN
+              MAX(COALESCE(bp.billing_legal_name,''))<>'' AND
+              MAX(COALESCE(bp.billing_document,''))<>'' AND
+              MAX(COALESCE(bp.financial_contact_name,''))<>'' AND
+              MAX(COALESCE(bp.financial_contact_email,''))<>'' AND
+              MAX(COALESCE(bp.billing_zip_code,''))<>'' AND
+              MAX(COALESCE(bp.billing_street,''))<>'' AND
+              MAX(COALESCE(bp.billing_number,''))<>'' AND
+              MAX(COALESCE(bp.billing_district,''))<>'' AND
+              MAX(COALESCE(bp.billing_city,''))<>'' AND
+              MAX(COALESCE(bp.billing_state,''))<>''
+            THEN 1 ELSE 0 END AS financial_profile_complete,
             (SELECT COALESCE(SUM(fc.amount),0) FROM financial_charges fc WHERE fc.tenant_id=t.id AND fc.status='OVERDUE') AS overdue_amount,
             (SELECT COUNT(*) FROM financial_charges fc WHERE fc.tenant_id=t.id AND fc.status IN ('OPEN','OVERDUE') AND fc.block_at<=DATE(${BRASILIA_NOW_SQL}) AND NOT EXISTS(SELECT 1 FROM financial_access_exceptions fe WHERE fe.tenant_id=t.id AND fe.revoked_at IS NULL AND ${BRASILIA_NOW_SQL} BETWEEN fe.starts_at AND fe.ends_at AND (fe.charge_id IS NULL OR fe.charge_id=fc.id))) AS blocking_charges
        FROM tenants t
@@ -51,6 +64,8 @@ saasRouter.get("/tenants", async (_req, res) => {
   res.json(rows);
 });
 
+const optionalText = (max=190) => z.string().trim().max(max).optional().nullable();
+const optionalEmail = z.union([z.string().trim().email(), z.literal(""), z.null()]).optional();
 const tenantSchema = z.object({
   tenantName: z.string().min(2),
   slug: z.string().min(2).regex(/^[a-z0-9-]+$/),
@@ -60,13 +75,42 @@ const tenantSchema = z.object({
   adminEmail: z.string().email(),
   adminPassword: z.string().min(6),
   planId: z.number().int().positive().optional().nullable(),
-  trialDays: z.number().int().min(0).max(365).default(14)
+  trialDays: z.number().int().min(0).max(365).default(14),
+  billingLegalName: optionalText(),
+  billingTradeName: optionalText(),
+  billingDocument: optionalText(20),
+  billingEmail: optionalEmail,
+  billingPhone: optionalText(30),
+  financialContactName: optionalText(),
+  financialContactDocument: optionalText(20),
+  financialContactEmail: optionalEmail,
+  financialContactPhone: optionalText(30),
+  billingZipCode: optionalText(12),
+  billingStreet: optionalText(),
+  billingNumber: optionalText(30),
+  billingComplement: optionalText(120),
+  billingDistrict: optionalText(120),
+  billingCity: optionalText(120),
+  billingState: optionalText(2),
+  autoEmailCharges: z.boolean().optional().default(true)
 });
 
 saasRouter.post("/tenants", async (req, res) => {
   const parsed = tenantSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Dados inválidos.", issues: parsed.error.flatten() });
-  const d = parsed.data;
+  const digits=(value:unknown)=>String(value??"").replace(/\D/g,"");
+  const d = {
+    ...parsed.data,
+    cnpj: digits(parsed.data.cnpj)||null,
+    billingDocument: digits(parsed.data.billingDocument||parsed.data.cnpj)||null,
+    billingPhone: digits(parsed.data.billingPhone)||null,
+    financialContactDocument: digits(parsed.data.financialContactDocument)||null,
+    financialContactPhone: digits(parsed.data.financialContactPhone)||null,
+    billingZipCode: digits(parsed.data.billingZipCode)||null,
+    billingState: parsed.data.billingState?.trim().toUpperCase()||null,
+    billingEmail: parsed.data.billingEmail?.trim().toLowerCase()||null,
+    financialContactEmail: parsed.data.financialContactEmail?.trim().toLowerCase()||null,
+  };
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();

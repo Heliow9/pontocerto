@@ -45,3 +45,18 @@
 @media(max-width:850px){.commercial-dashboard-heading{align-items:flex-start}.commercial-dashboard-actions{justify-content:flex-start;max-width:none}.commercial-executive-grid{grid-template-columns:1fr}.commercial-health-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-provider-card dl>div{grid-template-columns:1fr}}
 @media(max-width:700px){.commercial-dashboard-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}.commercial-finance-kpis{grid-template-columns:1fr}.commercial-health-grid{grid-template-columns:1fr 1fr}.commercial-attention-list>a{grid-template-columns:10px minmax(0,1fr) 18px}.commercial-attention-list b{grid-column:2/3}.commercial-funnel{grid-template-columns:1fr}.commercial-funnel a:last-child{grid-column:auto}}
 @media(max-width:430px){.commercial-dashboard-actions,.commercial-health-grid{grid-template-columns:1fr}.commercial-finance-kpi strong{font-size:23px}}
+
+/* Financeiro V3 · pagadores, perfil financeiro e entregas */
+.tenant-finance-form .section-label,.finance-profile .section-label{margin-top:6px}
+.finance-client-summary .badge{width:max-content;margin-top:3px}
+.finance-payer-source{display:grid;gap:7px;font-size:11px;font-weight:750;color:#536377}
+.finance-payer-source>div{display:flex;gap:8px;padding:4px;border:1px solid var(--saas-border);border-radius:11px;background:#f6f9fb}
+.finance-payer-source button{flex:1;border:0;border-radius:8px;padding:10px 12px;background:transparent;color:#52657b;font-weight:800;cursor:pointer}
+.finance-payer-source button.active{background:#fff;color:#176f82;box-shadow:0 1px 4px rgba(24,48,71,.12)}
+.finance-payer-preview{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;border:1px solid var(--saas-border);border-radius:12px;background:#f8fbfc;padding:13px 14px}
+.finance-payer-preview>div{display:grid;gap:4px}.finance-payer-preview>div:last-child{justify-items:end;text-align:right}
+.finance-payer-preview strong,.finance-payer-preview span,.finance-payer-preview small{display:block}.finance-payer-preview span,.finance-payer-preview small{font-size:11px;color:var(--saas-muted)}
+.finance-validation-warning{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:14px;padding:12px 14px;border:1px solid #efd99b;border-radius:11px;background:#fffaf0;color:#795817;font-size:12px}
+.finance-validation-warning strong{font-size:12px}.finance-validation-warning span{flex:1;min-width:220px}.finance-validation-warning button{margin-left:auto}
+.finance-profile .commercial-section-head{align-items:flex-start}.finance-profile h3{margin:0 0 12px}.finance-profile .commercial-section-head h3{margin-bottom:2px}
+@media(max-width:700px){.finance-payer-preview{display:grid}.finance-payer-preview>div:last-child{justify-items:start;text-align:left}.finance-payer-source>div{display:grid}.finance-validation-warning button{margin-left:0}}

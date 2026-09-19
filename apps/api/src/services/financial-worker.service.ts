@@ -12,7 +12,7 @@ let timer:ReturnType<typeof setInterval>|null=null;
 export async function runFinancialWorker() {
   if(running)return {skipped:true};
   running=true;
-  const summary={monthlyCreated:0,monthlyErrors:0,overdue:0,reconciled:0,reconcileErrors:0,accessSynced:0,accessErrors:0,webhooksRetried:0};
+  const summary={monthlyCreated:0,monthlyErrors:0,emailSent:0,emailErrors:0,overdue:0,reconciled:0,reconcileErrors:0,accessSynced:0,accessErrors:0,webhooksRetried:0};
   try{
     summary.overdue=await markOverdueCharges();
     const context=financialWorkerDateContext(todayInBrasilia());
@@ -23,7 +23,7 @@ export async function runFinancialWorker() {
          JOIN subscriptions s ON s.id=(SELECT MAX(s2.id) FROM subscriptions s2 WHERE s2.tenant_id=t.id)
          WHERE bp.auto_monthly_enabled=1 AND t.status='ACTIVE' AND s.status IN ('ACTIVE','PAST_DUE')`);
       for(const row of tenants){
-        try{const result=await createMonthlyCharge(Number(row.tenant_id),context.competence,null,{issue:true});if(!result.alreadyExists)summary.monthlyCreated++;}
+        try{const result:any=await createMonthlyCharge(Number(row.tenant_id),context.competence,null,{issue:true});if(!result.alreadyExists)summary.monthlyCreated++;if(result.emailDelivery?.status==="SENT")summary.emailSent++;if(result.emailDelivery?.status==="FAILED")summary.emailErrors++;}
         catch(error){summary.monthlyErrors++;console.error("[financial-worker] monthly",row.tenant_id,error instanceof Error?error.message:error);}
       }
     }

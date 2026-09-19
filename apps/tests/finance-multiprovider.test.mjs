@@ -37,3 +37,21 @@ test('relatórios CSV expõem provider e método', async () => {
   assert.match(routes,/"Provedor"/);
   assert.match(routes,/"Método"/);
 });
+
+test('cobrança avulsa aceita tenant ou pagador externo e usa snapshot', async()=>{
+  const service=await readFile('api/src/services/financial.service.ts','utf8');
+  const routes=await readFile('api/src/routes/saas-finance.routes.ts','utf8');
+  assert.match(routes,/payerSource/);
+  assert.match(routes,/EXTERNAL/);
+  assert.match(service,/payer_source/);
+  assert.match(service,/payer_document/);
+  assert.doesNotMatch(service,/async function payerForTenant/);
+});
+
+test('financeiro expõe histórico e reenvio de cobrança por email',async()=>{
+  const routes=await readFile('api/src/routes/saas-finance.routes.ts','utf8');
+  assert.match(routes,/charges\/:id\/deliveries/);
+  assert.match(routes,/charges\/:id\/email/);
+  assert.match(routes,/payer_name/);
+  assert.match(routes,/Último envio|Ultimo envio|delivery/i);
+});
