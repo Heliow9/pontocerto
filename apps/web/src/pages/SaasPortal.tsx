@@ -9,7 +9,7 @@ import {AuditPage} from "./AuditPage";
 import {PasswordPage} from "./PasswordPage";
 import {ContractsPage} from "./ContractsPage";
 import {SaasFinance} from "./SaasFinance";
-import {SaasFinanceInter} from "./SaasFinanceInter";
+import {SaasFinanceProviders} from "./SaasFinanceProviders";
 import {ResourceState,useResource,money} from "./CommercialUi";
 import "./commercial.css";
 
@@ -24,7 +24,7 @@ const sections:Record<string,{label:string;icon:string;group:string}>={
   "finance-charges":{label:"Cobranças",icon:"subscription",group:"Financeiro"},
   "finance-receipts":{label:"Recebimentos",icon:"check",group:"Financeiro"},
   "finance-delinquent":{label:"Inadimplentes",icon:"occurrences",group:"Financeiro"},
-  "finance-inter":{label:"Banco Inter",icon:"finance",group:"Financeiro"},
+  "finance-providers":{label:"Provedores de Pagamento",icon:"finance",group:"Financeiro"},
   "finance-logs":{label:"Logs Financeiros",icon:"audit",group:"Financeiro"},
   audit:{label:"Auditoria SaaS",icon:"audit",group:"Administração"},
   settings:{label:"Configurações SaaS",icon:"settings",group:"Administração"},
@@ -51,7 +51,7 @@ export default function SaasPortal({logout}:{logout:()=>void}){
       {navOpen&&<button className="commercial-nav-backdrop" aria-label="Fechar menu" onClick={()=>setNavOpen(false)}/>} 
       <main className="commercial-main" id="main-content">
         {message&&<div className={`commercial-toast ${message.error?"error":"success"}`} role={message.error?"alert":"status"}>{message.text}</div>}
-        {page==="overview"?<Overview/>:page==="clients"?<SaasPage notify={(text,t)=>setMessage({text,error:t==="error"})}/>:page==="plans"?<SaasPlans/>:page==="proposals"?<ProposalsPage/>:page==="subscriptions"?<Subscriptions/>:page==="contracts"?<ContractsPage/>:page==="finance"?<SaasFinance view="dashboard"/>:page==="finance-charges"?<SaasFinance view="charges"/>:page==="finance-receipts"?<SaasFinance view="receipts"/>:page==="finance-delinquent"?<SaasFinance view="delinquent"/>:page==="finance-inter"?<SaasFinanceInter/>:page==="finance-logs"?<SaasFinance view="logs"/>:page==="audit"?<AuditPage global/>:page==="settings"?<SaasGeneral/>:page==="email"?<SaasEmail/>:<PasswordPage/>}
+        {page==="overview"?<Overview/>:page==="clients"?<SaasPage notify={(text,t)=>setMessage({text,error:t==="error"})}/>:page==="plans"?<SaasPlans/>:page==="proposals"?<ProposalsPage/>:page==="subscriptions"?<Subscriptions/>:page==="contracts"?<ContractsPage/>:page==="finance"?<SaasFinance view="dashboard"/>:page==="finance-charges"?<SaasFinance view="charges"/>:page==="finance-receipts"?<SaasFinance view="receipts"/>:page==="finance-delinquent"?<SaasFinance view="delinquent"/>:page==="finance-providers"?<SaasFinanceProviders/>:page==="finance-logs"?<SaasFinance view="logs"/>:page==="audit"?<AuditPage global/>:page==="settings"?<SaasGeneral/>:page==="email"?<SaasEmail/>:<PasswordPage/>}
       </main>
     </div>
   </div>;

@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS saas_billing_profiles (
   grace_days SMALLINT UNSIGNED NOT NULL DEFAULT 3,
   auto_block_enabled TINYINT(1) NOT NULL DEFAULT 1,
   auto_monthly_enabled TINYINT(1) NOT NULL DEFAULT 1,
-  inter_cancel_days SMALLINT UNSIGNED NOT NULL DEFAULT 30,
+  provider_expiration_days SMALLINT UNSIGNED NOT NULL DEFAULT 30,
   created_at DATETIME NOT NULL,
   updated_at DATETIME NOT NULL,
   PRIMARY KEY (tenant_id),
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS financial_charges (
   due_date DATE NOT NULL,
   block_at DATE NOT NULL,
   status ENUM('DRAFT','ISSUING','OPEN','OVERDUE','PAID','CANCELED','FAILED') NOT NULL DEFAULT 'DRAFT',
-  provider VARCHAR(30) NOT NULL DEFAULT 'INTER',
+  provider VARCHAR(30) NOT NULL,
   provider_charge_id VARCHAR(190) NULL,
   provider_your_number VARCHAR(40) NULL,
   barcode VARCHAR(100) NULL,
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS financial_access_exceptions (
 
 CREATE TABLE IF NOT EXISTS financial_webhook_events (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  provider VARCHAR(30) NOT NULL DEFAULT 'INTER',
+  provider VARCHAR(30) NOT NULL,
   event_key VARCHAR(190) NOT NULL,
   account_reference VARCHAR(100) NULL,
   payload_json LONGTEXT NOT NULL,
@@ -119,7 +119,7 @@ CREATE TABLE IF NOT EXISTS financial_events (
   CONSTRAINT fk_financial_events_actor FOREIGN KEY (actor_user_id) REFERENCES users(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-INSERT INTO saas_billing_profiles(tenant_id,due_day,grace_days,auto_block_enabled,auto_monthly_enabled,inter_cancel_days,created_at,updated_at)
+INSERT INTO saas_billing_profiles(tenant_id,due_day,grace_days,auto_block_enabled,auto_monthly_enabled,provider_expiration_days,created_at,updated_at)
 SELECT t.id,10,3,1,1,30,NOW(),NOW()
   FROM tenants t
  WHERE NOT EXISTS (SELECT 1 FROM users su WHERE su.tenant_id=t.id AND su.role='SUPER_ADMIN')

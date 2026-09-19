@@ -4,7 +4,7 @@ import { todayInBrasilia } from "./financial-rules.js";
 import { financialWorkerDateContext } from "./financial-worker-core.js";
 import { createMonthlyCharge, listAmbiguousCharges, markOverdueCharges, reconcileCharge } from "./financial.service.js";
 import { getTenantFinancialAccess, syncSubscriptionFinancialStatus } from "./financial-access.service.js";
-import { retryFailedInterWebhooks } from "./inter-webhook.service.js";
+import { retryFailedProviderWebhooks } from "./payment-webhook.service.js";
 
 let running=false;
 let timer:ReturnType<typeof setInterval>|null=null;
@@ -30,7 +30,7 @@ export async function runFinancialWorker() {
     for(const chargeId of await listAmbiguousCharges(50)){
       try{await reconcileCharge(chargeId,null);summary.reconciled++;}catch(error){summary.reconcileErrors++;console.error("[financial-worker] reconcile",chargeId,error instanceof Error?error.message:error);}
     }
-    const retried=await retryFailedInterWebhooks(25);summary.webhooksRetried=retried.length;
+    const retried=await retryFailedProviderWebhooks(25);summary.webhooksRetried=retried.length;
     const [profiles]=await pool.query<any[]>("SELECT tenant_id FROM saas_billing_profiles");
     for(const row of profiles){
       try{const access=await getTenantFinancialAccess(Number(row.tenant_id));await syncSubscriptionFinancialStatus(Number(row.tenant_id),access.blocked);summary.accessSynced++;}

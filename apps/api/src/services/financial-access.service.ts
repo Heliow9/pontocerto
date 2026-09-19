@@ -14,7 +14,7 @@ export async function getTenantFinancialAccess(tenantId: number) {
   );
   const globalException = globalRows[0] || null;
   const [rows] = await pool.query<any[]>(
-    `SELECT c.id,c.type,c.description,c.amount,c.due_date,c.block_at,c.status,c.pix_copy_paste,c.digitable_line,c.barcode,c.provider_charge_id,
+    `SELECT c.id,c.type,c.description,c.amount,c.due_date,c.block_at,c.status,c.provider,c.requested_payment_method,c.pix_copy_paste,c.pix_qr_code,c.digitable_line,c.barcode,c.provider_charge_id,c.provider_payment_url,c.provider_pdf_url,
             EXISTS(SELECT 1 FROM financial_access_exceptions e
               WHERE e.tenant_id=c.tenant_id AND e.charge_id=c.id AND e.revoked_at IS NULL
                 AND ${BRASILIA_NOW_SQL} BETWEEN e.starts_at AND e.ends_at) AS excepted
@@ -37,7 +37,7 @@ export async function getTenantFinancialAccess(tenantId: number) {
     blockingCharges: blocking.map((r: any) => ({
       id: Number(r.id), type: r.type, description: r.description, amount: Number(r.amount), dueDate: r.due_date,
       blockAt: r.block_at, status: r.status, pixCopyPaste: r.pix_copy_paste, digitableLine: r.digitable_line,
-      barcode: r.barcode, providerChargeId: r.provider_charge_id,
+      barcode: r.barcode, provider: r.provider, requestedPaymentMethod: r.requested_payment_method, providerChargeId: r.provider_charge_id, providerPaymentUrl: r.provider_payment_url, providerPdfUrl: r.provider_pdf_url,
     })),
   };
 }

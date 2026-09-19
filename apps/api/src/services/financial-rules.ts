@@ -7,7 +7,6 @@ export type BillingProfile = {
   graceDays: number;
   autoBlockEnabled: boolean;
   autoMonthlyEnabled: boolean;
-  interCancelDays: number;
 };
 
 export function validateDueDay(value: number): 5 | 10 | 15 {

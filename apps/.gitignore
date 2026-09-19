@@ -17,3 +17,11 @@ api/storage/
 
 # Legacy package copied inside the source bundle
 mobile.zip
+
+# Bank certificates / private material
+**/*.key
+**/*.crt
+**/*.pem
+**/*.p12
+**/*.pfx
+**/secrets/

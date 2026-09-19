@@ -22,28 +22,33 @@ mobile.zip
 **/*.key
 **/*.crt
 **/*.pem
+**/*.p12
+**/*.pfx
 **/secrets/
 
 
-# Testes locais
-/apps/tests/
+# Dependências e backups locais
+node_modules/
+.dependency-backup/
 
+# Ambientes
+.env
+.env.*
+!.env.example
 
-# =========================================================
-# BACKUPS / ARQUIVOS TEMPORÁRIOS
-# =========================================================
-/.dependency-backup/
-*.backup
-*.bak
-*.tmp
+# Credenciais / certificados
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
+secrets/
 
-# =========================================================
-# TESTES LOCAIS
-# =========================================================
-/apps/tests/
+# Builds e temporários
+dist/
+.tmp/
+temp/
+*.log
+ponto-certo-saas-starter.zip
 
-# =========================================================
-# DOCUMENTAÇÃO INTERNA / PLANOS DE DESENVOLVIMENTO
-# =========================================================
-/apps/docs/
-/docs/
+*.zip

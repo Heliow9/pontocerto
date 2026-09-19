@@ -26,9 +26,9 @@ export function reconciliationDecision(input: {
 }): { action: ReconciliationAction; reason: string | null } {
   if (!input.providerChargeId) return { action: "HOLD", reason: "Cobrança do provedor sem identificador." };
   if (!input.providerYourNumber || input.providerYourNumber !== input.localYourNumber)
-    return { action: "HOLD", reason: "O identificador seuNumero retornado pelo banco não corresponde à cobrança local." };
+    return { action: "HOLD", reason: "A referência retornada pelo provedor não corresponde à cobrança local." };
   if (cents(input.providerNominalAmount) !== cents(input.localAmount))
-    return { action: "HOLD", reason: "O valor nominal retornado pelo banco diverge da cobrança local." };
+    return { action: "HOLD", reason: "O valor nominal retornado pelo provedor diverge da cobrança local." };
   if (input.providerStatus === "PAID") {
     if (cents(input.providerReceivedAmount) !== cents(input.localAmount))
       return { action: "HOLD", reason: "O valor recebido não corresponde ao valor integral da cobrança." };

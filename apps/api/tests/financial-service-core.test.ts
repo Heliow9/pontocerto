@@ -6,13 +6,13 @@ import {
   monthlyDescription,
 } from "../src/services/financial-service-core.js";
 
-test("seuNumero do Inter é curto, determinístico e derivado da cobrança local", () => {
+test("referência da cobrança é curta, determinística e derivada do ID local", () => {
   assert.equal(providerYourNumber(1), "PC000000000001");
   assert.equal(providerYourNumber(123456789), "PC000123456789");
   assert.ok(providerYourNumber(123).length <= 15);
 });
 
-test("reconciliação paga exige identificador, seuNumero e valor exatos", () => {
+test("reconciliação paga exige identificador, referência e valor exatos", () => {
   const ok = reconciliationDecision({
     localAmount: 1200,
     localYourNumber: "PC000000000001",
