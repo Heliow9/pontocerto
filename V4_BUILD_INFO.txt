@@ -1,0 +1,7 @@
+Base commit: d26224be5bc44551153cc4acbb0e6a418f8f0489
+Base branch: feature/v4-movyo-central
+Release: V4.1.2
+Patch: editor completo de assinatura + desconto pontual/reemissão de cobrança + hotfixes de produção
+Data: 2026-09-20
+Migration nova: 029_financial_charge_adjustments.sql
+Compatibilidade alvo: MySQL 5.6.26-log / Node 22

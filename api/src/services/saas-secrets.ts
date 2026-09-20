@@ -1,0 +1,4 @@
+import { createCipheriv,createDecipheriv,createHmac,randomBytes } from "node:crypto";
+function key(){const raw=process.env.WHATSAPP_ENCRYPTION_KEY||"";if(!/^[a-f0-9]{64}$/i.test(raw))throw new Error("Configure a chave de criptografia no servidor antes de salvar senhas.");return createHmac("sha256",Buffer.from(raw,"hex")).update("saas-email-settings-v1").digest();}
+export function protectSecret(value:string){const iv=randomBytes(12);const cipher=createCipheriv("aes-256-gcm",key(),iv);const data=Buffer.concat([cipher.update(value,"utf8"),cipher.final()]);return Buffer.concat([iv,cipher.getAuthTag(),data]).toString("base64");}
+export function revealSecret(value:string){const data=Buffer.from(value,"base64");const cipher=createDecipheriv("aes-256-gcm",key(),data.subarray(0,12));cipher.setAuthTag(data.subarray(12,28));return Buffer.concat([cipher.update(data.subarray(28)),cipher.final()]).toString("utf8");}

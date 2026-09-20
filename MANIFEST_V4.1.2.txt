@@ -1,0 +1,32 @@
+PONTO CERTO V4.1.2 — MANIFESTO DE ALTERAÇÕES
+
+NOVOS
+- CHANGELOG_V4.1.2_ASSINATURAS_COBRANCAS_AJUSTES.md
+- IMPLANTACAO_V4.1.2_PRODUCAO.md
+- MANIFEST_V4.1.2.txt
+- api/sql/029_financial_charge_adjustments.sql
+- api/src/services/financial-reissue-core.ts
+- api/tests/financial-reissue-core.test.ts
+- tests/v4_1_2_subscription_charge_adjustments.source.test.mjs
+
+ALTERADOS PARA V4.1.2
+- V4_BUILD_INFO.txt
+- api/package.json
+- api/src/routes/commercial-products.routes.ts
+- api/src/routes/saas-finance.routes.ts
+- api/src/services/financial.service.ts
+- api/src/services/product-subscription.service.ts
+- web/src/pages/SaasFinance.tsx
+- web/src/pages/SaasProductSubscriptions.tsx
+- tests/product-billing-policy.source.test.mjs
+- tests/product-financial-lifecycle.source.test.mjs
+
+HOTFIXES DE PRODUÇÃO INCORPORADOS AO PACOTE
+- api/sql/025_commercial_multiproduct_core.sql (MySQL 5.6)
+- api/src/services/movyo-import.service.ts (DATETIME MySQL 5.6)
+- api/src/services/product-provisioning.service.ts (tipagem mysql2/build)
+
+HERDADO DA V4.1.1
+- edição completa de clientes comerciais
+- integração Movyo V4.1
+- pró-rata da primeira cobrança

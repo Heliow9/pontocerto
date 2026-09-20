@@ -1,0 +1,1 @@
+ALTER TABLE time_adjustments ADD COLUMN requested_entry_type ENUM('CLOCK_IN','BREAK_OUT','BREAK_IN','CLOCK_OUT','OTHER') NOT NULL DEFAULT 'OTHER';

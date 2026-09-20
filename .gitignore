@@ -26,29 +26,6 @@ mobile.zip
 **/*.pfx
 **/secrets/
 
-
-# Dependências e backups locais
-node_modules/
+# Local dependency snapshots / delivery archives
 .dependency-backup/
-
-# Ambientes
-.env
-.env.*
-!.env.example
-
-# Credenciais / certificados
-*.key
-*.crt
-*.pem
-*.p12
-*.pfx
-secrets/
-
-# Builds e temporários
-dist/
-.tmp/
-temp/
-*.log
-ponto-certo-saas-starter.zip
-
 *.zip

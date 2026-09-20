@@ -1,0 +1,31 @@
+import {useState} from "react";
+import {Icon} from "../components/Icon";
+import {Field,ResourceState,useResource,download} from "./CommercialUi";
+import {apiMessage} from "../utils";
+
+export function AuditPage({global=false}:{global?:boolean}){
+  const [page,setPage]=useState(1),[filters,setFilters]=useState<any>({range:"7d",start:"",end:"",userId:"",tenantId:"",companyId:"",module:"",action:"",result:"",entity:""}),[query,setQuery]=useState("&range=7d"),[error,setError]=useState("");
+  const url=global?"/saas/audit":"/audit";const r=useResource(`${url}?page=${page}${query}`);
+  function apply(){setPage(1);setQuery("&"+new URLSearchParams(Object.fromEntries(Object.entries(filters).filter(([,v])=>v).map(([k,v])=>[k,String(v)]))).toString());}
+  return <><div className="commercial-heading"><div><span className="commercial-kicker">Governança</span><h1>{global?"Auditoria SaaS":"Auditoria de Usuários"}</h1><p>Trilha administrativa separada dos Logs do Sistema. Retenção de 12 meses e exportação dos 10.000 registros mais recentes do filtro.</p></div></div>
+    <form className="commercial-filters audit-filters" onSubmit={e=>{e.preventDefault();apply();}}>
+      <Field label="Período rápido"><select value={filters.range} onChange={e=>setFilters({...filters,range:e.target.value,start:"",end:""})}><option value="">Personalizado</option><option value="24h">Últimas 24 horas</option><option value="7d">Últimos 7 dias</option><option value="30d">Últimos 30 dias</option><option value="90d">Últimos 90 dias</option></select></Field>
+      <Field label="Data inicial"><input type="date" value={filters.start} onChange={e=>setFilters({...filters,start:e.target.value,range:""})}/></Field>
+      <Field label="Data final"><input type="date" value={filters.end} onChange={e=>setFilters({...filters,end:e.target.value,range:""})}/></Field>
+      <Field label="ID do usuário"><input type="number" min="1" value={filters.userId} onChange={e=>setFilters({...filters,userId:e.target.value})}/></Field>
+      {global&&<Field label="ID do cliente"><input type="number" min="1" value={filters.tenantId} onChange={e=>setFilters({...filters,tenantId:e.target.value})}/></Field>}
+      <Field label="ID da empresa"><input type="number" min="1" value={filters.companyId} onChange={e=>setFilters({...filters,companyId:e.target.value})}/></Field>
+      <Field label="Módulo"><input value={filters.module} onChange={e=>setFilters({...filters,module:e.target.value})}/></Field>
+      <Field label="Ação"><input value={filters.action} onChange={e=>setFilters({...filters,action:e.target.value})}/></Field>
+      <Field label="Resultado"><select value={filters.result} onChange={e=>setFilters({...filters,result:e.target.value})}><option value="">Todos</option><option value="SUCCESS">Sucesso</option><option value="ERROR">Erro / negado</option></select></Field>
+      <Field label="Entidade"><input value={filters.entity} onChange={e=>setFilters({...filters,entity:e.target.value})}/></Field>
+      <button className="primary audit-filter-button"><Icon name="search" size={15}/>Filtrar</button>
+    </form>
+    <div className="commercial-toolbar"><div><strong>Exportar resultados</strong><span>Respeita os filtros aplicados acima</span></div><div>{[["csv","CSV"],["xlsx","XLSX"],["pdf","PDF"]].map(([format,label])=><button className="secondary" key={format} type="button" onClick={()=>download(`${url}?format=${format}${query}`,`auditoria.${format}`).catch(e=>setError(apiMessage(e)))}>Exportar {label}</button>)}</div></div>
+    {error&&<p role="alert" className="error">{error}</p>}
+    <ResourceState resource={r}>{r.data?.items.length?<section className="commercial-panel table-panel"><div className="table-scroll"><table><thead><tr>{["Data","Cliente / Empresa","Usuário","Perfil","Módulo","Ação","Resultado","Registro","Detalhes"].map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{r.data.items.map((row:any)=><tr key={row.id}><td>{row.created_at}</td><td><strong>{row.tenant_name||"—"}</strong><small>{row.company_name||""}</small></td><td>{row.user_name||"Sistema"}<small>{row.user_email||""}</small></td><td>{row.executor_role||"—"}</td><td>{row.module||"—"}</td><td>{row.action}</td><td><span className={`commercial-status status-${String(row.result||"").toLowerCase()}`}>{row.result==="SUCCESS"?"Sucesso":"Erro / negado"}</span></td><td>{row.entity_type} {row.entity_id?`#${row.entity_id}`:""}</td><td><details><summary>Consultar</summary><pre className="commercial-json">{JSON.stringify({before:parse(row.before_data),after:parse(row.after_data),details:parse(row.details),ip:row.ip_address,userAgent:row.user_agent},null,2)}</pre></details></td></tr>)}</tbody></table></div></section>:<div className="commercial-empty"><div className="commercial-empty-icon"><Icon name="audit" size={24}/></div><strong>Nenhum registro encontrado</strong><p>Não existem eventos administrativos para o período e filtros informados.</p></div>}
+      <div className="commercial-pagination"><button className="secondary" disabled={page===1} onClick={()=>setPage(page-1)}>← Anterior</button><span>Página <strong>{page}</strong> de <strong>{r.data?.pages||1}</strong> · {r.data?.total||0} registros</span><button className="secondary" disabled={page>=r.data?.pages} onClick={()=>setPage(page+1)}>Próxima →</button></div>
+    </ResourceState>
+  </>;
+}
+function parse(value:any){if(!value)return null;if(typeof value!=="string")return value;try{return JSON.parse(value)}catch{return value}}
