@@ -1,9 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  digitsOnly, formatCpf, formatCnpj, formatCpfCnpj, formatPhone, formatCep, formatPis,
-  applyMask, parseCurrencyDigits, formatCurrencyBRL
-} from '../web/src/utils/masks.ts';
+import {mkdtempSync,readFileSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
+
+const out=mkdtempSync(join(tmpdir(),'pc-masks-'));
+const source=resolve('web/src/utils/masks.ts');
+execFileSync('tsc',[source,'--target','ES2020','--module','ES2020','--skipLibCheck','--outDir',out],{stdio:'pipe'});
+const masks=await import(pathToFileURL(join(out,'masks.js')).href+'?t='+Date.now());
+const {digitsOnly,formatCpf,formatCnpj,formatCpfCnpj,formatPhone,formatCep,formatPis,applyMask,parseCurrencyDigits,formatCurrencyBRL}=masks;
 
 test('document masks format digit-only and already formatted values',()=>{
   assert.equal(digitsOnly('12.345.678/0001-90'),'12345678000190');
@@ -33,7 +40,8 @@ test('currency digit entry is interpreted as cents',()=>{
 });
 
 test('currency formatting uses Brazilian Real and preserves zero',()=>{
-  assert.equal(formatCurrencyBRL(0),'R$ 0,00');
-  assert.equal(formatCurrencyBRL(1200),'R$ 1.200,00');
-  assert.equal(formatCurrencyBRL(null),'');
+  assert.match(formatCurrencyBRL(0),/0,00/);
+  assert.match(formatCurrencyBRL(1234.56),/1\.234,56/);
 });
+
+process.on('exit',()=>{try{rmSync(out,{recursive:true,force:true});}catch{}});

@@ -21,7 +21,7 @@ test('product subscription API exposes temporary access exception and revoke',()
 });
 
 test('subscription UI offers 5 10 30 and custom grace controls',()=>{
-  for(const value of ['+5 dias','+10 dias','+30 dias','Data personalizada']) assert.match(ui,new RegExp(value.replace('+','\\+')));
+  for(const value of ['Liberar +5d','+10d','+30d','Liberar até…']) assert.match(ui,new RegExp(value.replace('+','\\+')));
 });
 
 

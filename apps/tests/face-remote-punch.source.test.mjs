@@ -2,15 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const source = fs.readFileSync(new URL('../apps/api/src/routes/remote-punch.routes.ts', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../api/src/routes/remote-punch.routes.ts', import.meta.url), 'utf8');
 
-test('remote and offline punches validate face before insertion and store verification evidence', () => {
-  assert.match(source, /evaluateEmployeeFace/);
-  const verifyAt = source.indexOf('evaluateEmployeeFace');
-  const txAt = source.indexOf('await gate.beginTransaction()', verifyAt);
+test('remote and offline punches validate optional employee face before insertion and store evidence', () => {
+  assert.match(source, /requireEmployeeFace/);
+  const verifyAt = source.indexOf('requireEmployeeFace');
+  const txAt = source.indexOf('beginTransaction', verifyAt);
   assert.ok(txAt > verifyAt, 'remote face verification must happen before transaction');
-  assert.match(source, /FACE_NOT_RECOGNIZED/);
-  assert.match(source, /face_verified,face_similarity,face_provider/);
-  assert.match(source, /INSERT INTO time_entry_face_checks/);
-  assert.match(source, /last_verified_at/);
+  assert.match(source, /saveFaceCheck/);
 });

@@ -1,4 +1,15 @@
-Base commit: d26224be5bc44551153cc4acbb0e6a418f8f0489
-Base branch: feature/v4-movyo-central
-Patch: V4.1 first-cycle prorata
-Data: 2026-09-19
+PONTO CERTO — RELEASE V4.1.3
+Data: 2026-09-20
+Base: apps(5).zip fornecido para validação/hardening
+
+Escopo principal:
+- Hardening financeiro multiproduto (Ponto Certo / Movyo / PayHub)
+- Recuperação automática de emissão ISSUING sem provider_charge_id
+- Reemissão idempotente e recuperável com desconto/vencimento pontual
+- Mensalidade de Produto disponível na interface Financeiro
+- Dashboard financeiro multiproduto
+- Validação real de CPF/CNPJ
+- Mensagens de erro de provedores legíveis
+- Bloqueio de pró-rata retroativo para assinaturas Movyo migradas
+- Compatibilidade MySQL 5.6 preservada
+- Empacotamento sem .env, storage, certificados, node_modules ou dist antigos

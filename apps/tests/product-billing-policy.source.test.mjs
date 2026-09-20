@@ -18,7 +18,8 @@ test('Movyo UI recommends Efí BolePix without silently enabling it',()=>{
 
 test('subscription UI exposes explicit billing overrides',()=>{
   const source=subscriptionsUi();
-  assert.match(source,/Sobrescrever cobrança/);
+  assert.match(source,/Editar assinatura/);
+  assert.match(source,/Pró-rata automático na primeira cobrança/);
   assert.match(source,/billingProvider/);
   assert.match(source,/billingMethod/);
   assert.match(source,/graceDays/);

@@ -1,3 +1,4 @@
+import {isValidBrazilDocument} from '../utils/brazil-document.js';
 import type { PaymentMethodCode, PaymentProviderCode, ProviderPayer } from './payment-provider.types.js';
 
 export type FinancialPayerSource='TENANT'|'COMMERCIAL'|'EXTERNAL';
@@ -39,8 +40,7 @@ const email=(value:unknown)=>{const v=String(value??'').trim().toLowerCase();ret
 
 export function normalizeFinancialPayer(input:FinancialPayerInput):FinancialPayerSnapshot{
   const document=digits(input.document);
-  if(input.personType==='PF'&&document.length!==11)throw new Error('CPF do pagador deve possuir 11 dígitos.');
-  if(input.personType==='PJ'&&document.length!==14)throw new Error('CNPJ do pagador deve possuir 14 dígitos.');
+  if(!isValidBrazilDocument(document,input.personType))throw new Error(input.personType==='PF'?'CPF do pagador inválido.':'CNPJ do pagador inválido.');
   const name=String(input.name??'').trim();
   if(!name)throw new Error('Informe o nome ou razão social do pagador.');
   const state=text(input.state)?.toUpperCase()??null;
@@ -99,7 +99,7 @@ export function payerFromCommercialCustomer(customer:any):FinancialPayerSnapshot
 export function missingPayerFieldsForMethod(payer:FinancialPayerSnapshot,provider:PaymentProviderCode,method:PaymentMethodCode){
   const missing:string[]=[];
   if(!payer.name)missing.push('name');
-  if(!payer.document||(payer.personType==='PF'&&payer.document.length!==11)||(payer.personType==='PJ'&&payer.document.length!==14))missing.push('document');
+  if(!isValidBrazilDocument(payer.document,payer.personType))missing.push('document');
   if(provider==='MERCADO_PAGO'&&method==='BOLETO'){
     if(!payer.email)missing.push('email');
     for(const key of ['zipCode','street','number','district','city','state'] as const)if(!payer[key])missing.push(key);
@@ -114,6 +114,9 @@ export function billingProfileCompleteness(profile:any){
     billingZipCode:'billing_zip_code',billingStreet:'billing_street',billingNumber:'billing_number',billingDistrict:'billing_district',billingCity:'billing_city',billingState:'billing_state',
   };
   const missing=required.filter(key=>!String(profile?.[key]??profile?.[aliases[key]]??'').trim());
+  const billingDocument=digits(profile?.billingDocument??profile?.billing_document);
+  const billingPersonType:FinancialPersonType=billingDocument.length===11?'PF':'PJ';
+  if(billingDocument&&!isValidBrazilDocument(billingDocument,billingPersonType)&&!missing.includes('billingDocument'))missing.push('billingDocument');
   return{complete:missing.length===0,missing};
 }
 

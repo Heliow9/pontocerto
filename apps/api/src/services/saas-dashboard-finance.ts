@@ -2,8 +2,10 @@ import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 
 export type SaasDashboardAttention={
   kind:"OVERDUE"|"BLOCKED";
-  tenantId:number;
+  tenantId:number|null;
+  productSubscriptionId:number|null;
   tenantName:string;
+  productName:string|null;
   chargeId:number;
   label:string;
   amount:number;
@@ -47,56 +49,55 @@ export async function loadSaasDashboardFinance(executor:{query:any}):Promise<Saa
       COALESCE(SUM(CASE WHEN fc.status IN ('ISSUING','OPEN') AND fc.due_date>=DATE(${BRASILIA_NOW_SQL}) THEN 1 ELSE 0 END),0) AS openCount,
       COALESCE(SUM(CASE WHEN fc.status='OVERDUE' THEN fc.amount ELSE 0 END),0) AS overdueAmount,
       COALESCE(SUM(CASE WHEN fc.status='OVERDUE' THEN 1 ELSE 0 END),0) AS overdueCount,
-      COUNT(DISTINCT CASE WHEN fc.status='OVERDUE' THEN fc.tenant_id END) AS overdueTenants,
-      COUNT(DISTINCT CASE WHEN bp.auto_block_enabled=1
-        AND fc.status IN ('OPEN','OVERDUE')
+      COUNT(DISTINCT CASE WHEN fc.status='OVERDUE' THEN CASE WHEN fc.tenant_id IS NOT NULL THEN CONCAT('T:',fc.tenant_id) WHEN fc.product_subscription_id IS NOT NULL THEN CONCAT('S:',fc.product_subscription_id) END END) AS overdueTenants,
+      COUNT(DISTINCT CASE WHEN fc.status IN ('OPEN','OVERDUE')
         AND fc.block_at<=DATE(${BRASILIA_NOW_SQL})
-        AND NOT EXISTS(
+        AND ((fc.tenant_id IS NOT NULL AND bp.auto_block_enabled=1 AND NOT EXISTS(
           SELECT 1 FROM financial_access_exceptions e
            WHERE e.tenant_id=fc.tenant_id AND e.revoked_at IS NULL
              AND ${BRASILIA_NOW_SQL} BETWEEN e.starts_at AND e.ends_at
              AND (e.charge_id IS NULL OR e.charge_id=fc.id)
-        ) THEN fc.tenant_id END) AS blockedTenants
+        )) OR (fc.product_subscription_id IS NOT NULL AND ps.auto_block=1 AND (ps.grace_until IS NULL OR ps.grace_until<${BRASILIA_NOW_SQL})))
+        THEN CASE WHEN fc.tenant_id IS NOT NULL THEN CONCAT('T:',fc.tenant_id) ELSE CONCAT('S:',fc.product_subscription_id) END END) AS blockedTenants
     FROM financial_charges fc
     LEFT JOIN saas_billing_profiles bp ON bp.tenant_id=fc.tenant_id
+    LEFT JOIN product_subscriptions ps ON ps.id=fc.product_subscription_id
   `);
   const summary=normalizeFinanceSummary(summaryRows[0]||{});
   const [attentionRows]=await executor.query(`
-    SELECT fc.id AS charge_id,fc.tenant_id,t.name AS tenant_name,fc.description,fc.amount,fc.due_date,
-      CASE WHEN bp.auto_block_enabled=1
-        AND fc.status IN ('OPEN','OVERDUE')
-        AND fc.block_at<=DATE(${BRASILIA_NOW_SQL})
-        AND NOT EXISTS(
-          SELECT 1 FROM financial_access_exceptions e
-           WHERE e.tenant_id=fc.tenant_id AND e.revoked_at IS NULL
-             AND ${BRASILIA_NOW_SQL} BETWEEN e.starts_at AND e.ends_at
-             AND (e.charge_id IS NULL OR e.charge_id=fc.id)
-        ) THEN 1 ELSE 0 END AS blocking
+    SELECT fc.id AS charge_id,fc.tenant_id,fc.product_subscription_id,COALESCE(t.name,cc.legal_name,'Cliente') AS tenant_name,cp.name AS product_name,fc.description,fc.amount,fc.due_date,
+      CASE WHEN fc.status IN ('OPEN','OVERDUE') AND fc.block_at<=DATE(${BRASILIA_NOW_SQL}) AND (
+        (fc.tenant_id IS NOT NULL AND bp.auto_block_enabled=1 AND NOT EXISTS(
+          SELECT 1 FROM financial_access_exceptions e WHERE e.tenant_id=fc.tenant_id AND e.revoked_at IS NULL
+            AND ${BRASILIA_NOW_SQL} BETWEEN e.starts_at AND e.ends_at AND (e.charge_id IS NULL OR e.charge_id=fc.id)
+        )) OR (fc.product_subscription_id IS NOT NULL AND ps.auto_block=1 AND (ps.grace_until IS NULL OR ps.grace_until<${BRASILIA_NOW_SQL}))
+      ) THEN 1 ELSE 0 END AS blocking
     FROM financial_charges fc
-    JOIN tenants t ON t.id=fc.tenant_id
+    LEFT JOIN tenants t ON t.id=fc.tenant_id
     LEFT JOIN saas_billing_profiles bp ON bp.tenant_id=fc.tenant_id
-    WHERE fc.status='OVERDUE' OR (
-      bp.auto_block_enabled=1 AND fc.status IN ('OPEN','OVERDUE')
-      AND fc.block_at<=DATE(${BRASILIA_NOW_SQL})
-      AND NOT EXISTS(
-        SELECT 1 FROM financial_access_exceptions e
-         WHERE e.tenant_id=fc.tenant_id AND e.revoked_at IS NULL
-           AND ${BRASILIA_NOW_SQL} BETWEEN e.starts_at AND e.ends_at
-           AND (e.charge_id IS NULL OR e.charge_id=fc.id)
-      )
-    )
+    LEFT JOIN product_subscriptions ps ON ps.id=fc.product_subscription_id
+    LEFT JOIN commercial_customers cc ON cc.id=fc.commercial_customer_id
+    LEFT JOIN commercial_products cp ON cp.id=ps.product_id
+    WHERE fc.status='OVERDUE' OR (fc.status IN ('OPEN','OVERDUE') AND fc.block_at<=DATE(${BRASILIA_NOW_SQL}) AND (
+      (fc.tenant_id IS NOT NULL AND bp.auto_block_enabled=1 AND NOT EXISTS(
+        SELECT 1 FROM financial_access_exceptions e WHERE e.tenant_id=fc.tenant_id AND e.revoked_at IS NULL
+          AND ${BRASILIA_NOW_SQL} BETWEEN e.starts_at AND e.ends_at AND (e.charge_id IS NULL OR e.charge_id=fc.id)
+      )) OR (fc.product_subscription_id IS NOT NULL AND ps.auto_block=1 AND (ps.grace_until IS NULL OR ps.grace_until<${BRASILIA_NOW_SQL}))
+    ))
     ORDER BY blocking DESC,fc.due_date ASC,fc.id ASC
     LIMIT 8
   `);
   const attention:SaasDashboardAttention[]=attentionRows.map((row:any)=>({
     kind:Boolean(row.blocking)?"BLOCKED":"OVERDUE",
-    tenantId:Number(row.tenant_id),
+    tenantId:row.tenant_id==null?null:Number(row.tenant_id),
+    productSubscriptionId:row.product_subscription_id==null?null:Number(row.product_subscription_id),
     tenantName:String(row.tenant_name||"Cliente"),
+    productName:row.product_name||null,
     chargeId:Number(row.charge_id),
     label:Boolean(row.blocking)?"Acesso bloqueado por inadimplência":String(row.description||"Cobrança vencida"),
     amount:Number(row.amount||0),
     date:String(row.due_date||""),
-    href:`#saas/finance-charges?tenant=${Number(row.tenant_id)}`,
+    href:row.tenant_id?`#saas/finance-charges?tenant=${Number(row.tenant_id)}`:"#saas/finance-charges",
   }));
   return {...summary,attention};
 }

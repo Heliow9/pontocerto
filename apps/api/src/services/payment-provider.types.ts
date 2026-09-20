@@ -62,6 +62,12 @@ export type ProviderChargeSnapshot = ProviderIssueResult & {
   netAmount?: number | null;
 };
 
+export type ProviderLookupHint = {
+  createdAt?: string | null;
+  dueDate?: string | null;
+  payerDocument?: string | null;
+};
+
 export type ProviderConnectionStatus = {
   code: PaymentProviderCode;
   configured: boolean;
@@ -86,6 +92,7 @@ export interface PaymentProvider {
   testConnection(): Promise<ProviderConnectionTest>;
   issue(input: ProviderIssueInput): Promise<ProviderIssueResult>;
   getCharge(providerChargeId: string, externalReference: string, requestedMethod: PaymentMethodCode): Promise<ProviderChargeSnapshot | null>;
+  findChargeByExternalReference?(externalReference: string, requestedMethod: PaymentMethodCode, hint?: ProviderLookupHint): Promise<ProviderChargeSnapshot | null>;
   cancel(providerChargeId: string, requestedMethod: PaymentMethodCode): Promise<void>;
   getPdf?(providerChargeId: string, requestedMethod: PaymentMethodCode): Promise<Buffer>;
   configureWebhook?(url: string): Promise<unknown>;

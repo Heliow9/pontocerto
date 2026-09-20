@@ -15,6 +15,7 @@ import { commercialCustomersRouter } from "./commercial-customers.routes.js";
 import { commercialProductsRouter,productSubscriptionsRouter } from "./commercial-products.routes.js";
 import { commercialDocumentsRouter } from "./commercial-documents.routes.js";
 import { movyoIntegrationRouter } from "./movyo-integration.routes.js";
+import { isValidBrazilDocument } from "../utils/brazil-document.js";
 
 export const saasRouter = Router();
 saasRouter.use(authMiddleware, requireRole("SUPER_ADMIN"));
@@ -108,12 +109,18 @@ saasRouter.post("/tenants", async (req, res) => {
   const parsed = tenantSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: "Dados inválidos.", issues: parsed.error.flatten() });
   const digits=(value:unknown)=>String(value??"").replace(/\D/g,"");
+  const cnpj=digits(parsed.data.cnpj)||null;
+  const billingDocument=digits(parsed.data.billingDocument||parsed.data.cnpj)||null;
+  const financialContactDocument=digits(parsed.data.financialContactDocument)||null;
+  if(cnpj&&!isValidBrazilDocument(cnpj,'PJ'))return res.status(400).json({message:'CNPJ da empresa inválido.'});
+  if(billingDocument&&!isValidBrazilDocument(billingDocument))return res.status(400).json({message:'CPF/CNPJ de faturamento inválido.'});
+  if(financialContactDocument&&!isValidBrazilDocument(financialContactDocument,'PF'))return res.status(400).json({message:'CPF do responsável financeiro inválido.'});
   const d = {
     ...parsed.data,
-    cnpj: digits(parsed.data.cnpj)||null,
-    billingDocument: digits(parsed.data.billingDocument||parsed.data.cnpj)||null,
+    cnpj,
+    billingDocument,
     billingPhone: digits(parsed.data.billingPhone)||null,
-    financialContactDocument: digits(parsed.data.financialContactDocument)||null,
+    financialContactDocument,
     financialContactPhone: digits(parsed.data.financialContactPhone)||null,
     billingZipCode: digits(parsed.data.billingZipCode)||null,
     billingState: parsed.data.billingState?.trim().toUpperCase()||null,

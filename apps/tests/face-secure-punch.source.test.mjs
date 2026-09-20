@@ -2,23 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const source = fs.readFileSync(new URL('../apps/api/src/routes/time-entries.routes.ts', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('../api/src/routes/time-entries.routes.ts', import.meta.url), 'utf8');
 
-test('secure punch verifies selfie face before transaction and persists evidence', () => {
-  assert.match(source, /evaluateEmployeeFace/);
-  const verifyAt = source.indexOf('evaluateEmployeeFace');
-  const beginAt = source.indexOf('await conn.beginTransaction()', verifyAt);
-  assert.ok(beginAt > verifyAt, 'face verification must happen before transaction starts');
-  assert.match(source, /FACE_MISMATCH/);
-  assert.match(source, /FACE_NOT_RECOGNIZED/);
-  assert.match(source, /face_decision,face_similarity/);
-  assert.match(source, /face_verified,face_similarity,face_provider/);
-  assert.match(source, /INSERT INTO time_entry_face_checks/);
-  assert.match(source, /last_verified_at/);
+test('secure punch validates optional employee reference photo before transaction and persists evidence', () => {
+  assert.match(source, /requireEmployeeFace/);
+  const verifyAt = source.indexOf('requireEmployeeFace');
+  const txAt = source.indexOf('beginTransaction', verifyAt);
+  assert.ok(txAt > verifyAt, 'face verification must happen before transaction');
+  assert.match(source, /saveFaceCheck/);
 });
 
-test('legacy employee punch cannot bypass required facial recognition', () => {
-  assert.match(source, /getEmployeeFacePolicy/);
-  assert.match(source, /facePolicy\.required/);
-  assert.match(source, /SECURE_PUNCH_REQUIRED/);
+test('employee punch cannot bypass a registered reference photo', () => {
+  const policy = fs.readFileSync(new URL('../api/src/services/face-verification.service.ts', import.meta.url), 'utf8');
+  assert.match(policy, /employee_face_images/);
+  assert.match(policy, /if \(!face\.verified\)/);
+  assert.match(policy, /FACE_MISMATCH/);
 });

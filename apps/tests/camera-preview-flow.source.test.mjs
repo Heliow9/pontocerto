@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const remote = fs.readFileSync('apps/mobile/src/RemoteClock.tsx', 'utf8');
-const main = fs.readFileSync('apps/mobile/app/index.tsx', 'utf8');
+const remote = fs.readFileSync('mobile/src/RemoteClock.tsx', 'utf8');
+const main = fs.readFileSync('mobile/app/index.tsx', 'utf8');
 
 test('offline camera waits for live preview before allowing capture', () => {
   assert.match(remote, /cameraReady/);

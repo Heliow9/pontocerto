@@ -35,6 +35,19 @@ export async function httpsRequest(urlString:string, options:RequestOptions={}){
   });
 }
 
+function readableProviderValue(value:any,depth=0):string{
+  if(value==null||depth>4)return '';
+  if(typeof value==='string')return value.trim();
+  if(typeof value==='number'||typeof value==='boolean')return String(value);
+  if(Array.isArray(value))return value.map(item=>readableProviderValue(item,depth+1)).filter(Boolean).join(' · ');
+  if(typeof value==='object'){
+    for(const key of ['message','error_description','description','detail','reason','title']){const message=readableProviderValue(value?.[key],depth+1);if(message)return message;}
+    for(const key of ['errors','details','error']){const message=readableProviderValue(value?.[key],depth+1);if(message)return message;}
+    try{return JSON.stringify(value); }catch{return ''; }
+  }
+  return '';
+}
 export function errorMessageFromResponse(json:any,text:string,fallback:string){
-  return String(json?.message||json?.error_description||json?.error?.message||json?.error||json?.details?.[0]?.description||text||fallback).slice(0,500);
+  const message=readableProviderValue(json)||String(text||'').trim()||fallback;
+  return String(message||fallback).slice(0,500);
 }

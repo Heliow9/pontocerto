@@ -1,6 +1,6 @@
 {
   "name": "@ponto-certo/api",
-  "version": "0.4.6",
+  "version": "4.1.3",
   "private": true,
   "type": "module",
   "scripts": {
@@ -23,7 +23,10 @@
     "test:financial-payer-core": "rm -rf .test-dist/financial-payer-core && tsc tests/node-builtins-shim.d.ts tests/financial-payer-core.test.ts src/services/financial-payer-core.ts src/services/payment-provider.types.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-payer-core && node --test .test-dist/financial-payer-core/tests/financial-payer-core.test.js",
     "test:financial-email-core": "rm -rf .test-dist/financial-email-core && tsc tests/node-builtins-shim.d.ts tests/financial-email-core.test.ts src/services/financial-email-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-email-core && node --test .test-dist/financial-email-core/tests/financial-email-core.test.js",
     "test:product-prorata-core": "rm -rf .test-dist/product-prorata-core && tsc tests/node-builtins-shim.d.ts tests/product-prorata-core.test.ts src/services/product-subscription-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/product-prorata-core && node --test .test-dist/product-prorata-core/tests/product-prorata-core.test.js",
-    "test:financial-reissue-core": "rm -rf .test-dist/financial-reissue-core && tsc tests/node-builtins-shim.d.ts tests/financial-reissue-core.test.ts src/services/financial-reissue-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-reissue-core && node --test .test-dist/financial-reissue-core/tests/financial-reissue-core.test.js"
+    "test:financial-reissue-core": "rm -rf .test-dist/financial-reissue-core && tsc tests/node-builtins-shim.d.ts tests/financial-reissue-core.test.ts src/services/financial-reissue-core.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/financial-reissue-core && node --test .test-dist/financial-reissue-core/tests/financial-reissue-core.test.js",
+    "test:brazil-document": "rm -rf .test-dist/brazil-document && tsc tests/node-builtins-shim.d.ts tests/brazil-document.test.ts src/utils/brazil-document.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/brazil-document && node --test .test-dist/brazil-document/tests/brazil-document.test.js",
+    "test:core": "npm run test:financial-rules && npm run test:financial-service-core && npm run test:financial-access-core && npm run test:financial-worker-core && npm run test:payment-provider-core && npm run test:payment-webhook-core && npm run test:saas-dashboard-finance && npm run test:financial-payer-core && npm run test:financial-email-core && npm run test:product-prorata-core && npm run test:financial-reissue-core && npm run test:brazil-document && npm run test:provider-http",
+    "test:provider-http": "rm -rf .test-dist/provider-http && tsc tests/node-builtins-shim.d.ts tests/provider-http.test.ts src/services/provider-http.ts --module NodeNext --moduleResolution NodeNext --target ES2021 --esModuleInterop --skipLibCheck --outDir .test-dist/provider-http && node --test .test-dist/provider-http/tests/provider-http.test.js"
   },
   "dependencies": {
     "@aws-sdk/client-rekognition": "^3.1132.0",
