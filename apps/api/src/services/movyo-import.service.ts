@@ -9,6 +9,16 @@ const integrationError=(message:string,status=400,code='MOVYO_INTEGRATION_ERROR'
 const json=(value:unknown)=>JSON.stringify(value??null);
 const digits=(value:unknown)=>String(value??'').replace(/\D/g,'');
 const stableStatuses=new Set(['PONTO_CERTO','CUTOVER_PENDING']);
+const toMysqlDateTime=(value:unknown)=>{
+  const raw=String(value??'').trim();
+  if(!raw)return null;
+  const plain=raw.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})(?:\.\d+)?$/);
+  if(plain)return `${plain[1]} ${plain[2]}`;
+  const d=new Date(raw);
+  if(Number.isNaN(d.getTime()))return null;
+  const brasilia=new Date(d.getTime()-3*60*60*1000);
+  return brasilia.toISOString().slice(0,19).replace('T',' ');
+};
 
 function customerFromRow(row:any){
   return{
@@ -142,7 +152,7 @@ export async function importMovyoCustomer(externalIdInput:string|number,options:
     }else{
       const price=mapped.monthlyPriceOverride??Number(plan.price_monthly||0);
       const status=remoteSubscriptionStatus(remote,missing);
-      const [r]=await conn.query<any>(`INSERT INTO product_subscriptions(commercial_customer_id,product_id,product_plan_id,external_source,external_account_id,billing_source,status,monthly_price,discount_percent,starts_at,current_period_end,next_due_date,billing_provider,billing_method,grace_days,auto_block,metadata_json,created_at,updated_at) VALUES(?,?,?,'MOVYO',?,'MOVYO_LEGACY',?,?,?,?,?,?,?,?,?,?,?,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,[customerId,product.id,plan.id,externalId,status,price,mapped.discountPercent,mapped.startsAt,mapped.currentPeriodEnd,mapped.nextDueDate,product.default_provider||null,product.default_payment_method||null,Number(product.default_grace_days??3),Number(product.default_auto_block??1),json({importedFrom:'MOVYO',legacyStatus:remote.statusAssinatura||null})]);
+      const [r]=await conn.query<any>(`INSERT INTO product_subscriptions(commercial_customer_id,product_id,product_plan_id,external_source,external_account_id,billing_source,status,monthly_price,discount_percent,starts_at,current_period_end,next_due_date,billing_provider,billing_method,grace_days,auto_block,metadata_json,created_at,updated_at) VALUES(?,?,?,'MOVYO',?,'MOVYO_LEGACY',?,?,?,?,?,?,?,?,?,?,?,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,[customerId,product.id,plan.id,externalId,status,price,mapped.discountPercent,toMysqlDateTime(mapped.startsAt),toMysqlDateTime(mapped.currentPeriodEnd),mapped.nextDueDate,product.default_provider||null,product.default_payment_method||null,Number(product.default_grace_days??3),Number(product.default_auto_block??1),json({importedFrom:'MOVYO',legacyStatus:remote.statusAssinatura||null})]);
       subscriptionId=Number(r.insertId);
     }
     if(mapping){

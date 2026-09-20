@@ -3,7 +3,7 @@ import { z } from "zod";
 import { safe } from "./saas-commercial.routes.js";
 import {
   cancelCharge, createAdHocCharge, createImplementationCharge, createMonthlyCharge, createProductSubscriptionMonthlyCharge, getBillingProfile, getCharge,
-  getChargePdf, getFinancialDashboard, getImplementationSuggestion, issueCharge, listCharges, listFinancialEvents,
+  getChargePdf, getFinancialDashboard, getImplementationSuggestion, issueCharge, listCharges, listFinancialEvents, reissueChargeWithAdjustment,
   listReceipts, reconcileCharge, recordManualPayment, updateBillingProfile,
 } from "../services/financial.service.js";
 import { getTenantFinancialAccess, grantFinancialException, listFinancialExceptions, revokeFinancialException } from "../services/financial-access.service.js";
@@ -34,6 +34,7 @@ saasFinanceRouter.get("/charges/:id",safe(async(req,res)=>res.json(await getChar
 saasFinanceRouter.get("/charges/:id/pdf",safe(async(req,res)=>{const chargeId=id(req.params.id);const pdf=await getChargePdf(chargeId);res.setHeader("Content-Type","application/pdf");res.setHeader("Content-Disposition",`inline; filename=boleto-${chargeId}.pdf`);res.send(pdf);}));
 saasFinanceRouter.post("/charges/:id/issue",safe(async(req,res)=>res.json(await issueCharge(id(req.params.id),req.auth!.userId))));
 saasFinanceRouter.post("/charges/:id/cancel",safe(async(req,res)=>{const chargeId=id(req.params.id);const d=z.object({reason:z.string().trim().min(2).max(100).optional()}).parse(req.body||{});const charge=await cancelCharge(chargeId,req.auth!.userId,d.reason||"SOLICITACAO_ADMIN");await writeAudit(req,"CANCEL","financial_charge",chargeId);res.json(charge);}));
+saasFinanceRouter.post("/charges/:id/reissue-adjusted",safe(async(req,res)=>{const chargeId=id(req.params.id);const before=await getCharge(chargeId);const d=z.object({discountType:z.enum(["NONE","PERCENT","FIXED"]),discountValue:z.coerce.number().min(0).default(0),dueDate:date.optional().nullable(),reason:z.string().trim().min(3).max(500),applyRecurringDiscount:z.boolean().optional().default(false)}).parse(req.body);const result=await reissueChargeWithAdjustment(chargeId,d,req.auth!.userId);await writeAudit(req,"REISSUE","financial_charge",chargeId,before,{replacementId:result.newCharge.id,discountType:d.discountType,discountValue:d.discountValue,dueDate:d.dueDate||before.due_date,reason:d.reason,applyRecurringDiscount:d.applyRecurringDiscount,issueError:result.issueError});res.json(result);}));
 saasFinanceRouter.post("/charges/:id/reconcile",safe(async(req,res)=>res.json(await reconcileCharge(id(req.params.id),req.auth!.userId))));
 saasFinanceRouter.post("/charges/:id/manual-payment",safe(async(req,res)=>{const chargeId=id(req.params.id);const d=z.object({paidAt:z.string().datetime().optional()}).parse(req.body||{});const charge=await recordManualPayment(chargeId,req.auth!.userId,d.paidAt);await writeAudit(req,"MANUAL_PAYMENT","financial_charge",chargeId);res.json(charge);}));
 saasFinanceRouter.get("/charges/:id/deliveries",safe(async(req,res)=>res.json(await listChargeDeliveries(id(req.params.id)))));

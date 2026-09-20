@@ -99,7 +99,7 @@ INSERT INTO commercial_products(code,name,description,active,created_at,updated_
 ON DUPLICATE KEY UPDATE name=VALUES(name),description=VALUES(description),updated_at=NOW();
 
 INSERT INTO commercial_product_plans(product_id,code,name,price_monthly,active,metadata_json,created_at,updated_at)
-SELECT cp.id,p.code,p.name,p.price_monthly,p.active,JSON_OBJECT('legacyPlanId',p.id,'maxEmployees',p.max_employees),NOW(),NOW()
+SELECT cp.id,p.code,p.name,p.price_monthly,p.active,CONCAT('{"legacyPlanId":',COALESCE(CAST(p.id AS CHAR),'null'),',"maxEmployees":',COALESCE(CAST(p.max_employees AS CHAR),'null'),'}'),NOW(),NOW()
 FROM plans p JOIN commercial_products cp ON cp.code='PONTO_CERTO'
 ON DUPLICATE KEY UPDATE name=VALUES(name),price_monthly=VALUES(price_monthly),active=VALUES(active),metadata_json=VALUES(metadata_json),updated_at=NOW();
 
@@ -139,7 +139,7 @@ SELECT cc.id,prod.id,cpp.id,t.id,'PONTO_CERTO_TENANT',CAST(t.id AS CHAR),'PONTO_
        COALESCE(s.created_at,t.created_at),NULL,s.current_period_end,
        CASE WHEN s.current_period_end IS NULL THEN NULL ELSE DATE(s.current_period_end) END,
        fs.default_payment_provider,fs.default_payment_method,COALESCE(bp.grace_days,3),COALESCE(bp.auto_block_enabled,1),
-       JSON_OBJECT('legacySubscriptionId',s.id,'legacyPlanId',p.id),NOW(),NOW()
+       CONCAT('{"legacySubscriptionId":',COALESCE(CAST(s.id AS CHAR),'null'),',"legacyPlanId":',COALESCE(CAST(p.id AS CHAR),'null'),'}'),NOW(),NOW()
 FROM tenants t
 JOIN commercial_customers cc ON cc.tenant_id=t.id
 JOIN commercial_products prod ON prod.code='PONTO_CERTO'
@@ -156,8 +156,6 @@ SET @sql=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=
 SET @sql=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='financial_charges' AND COLUMN_NAME='product_subscription_id')=0,'ALTER TABLE financial_charges ADD COLUMN product_subscription_id BIGINT UNSIGNED NULL AFTER commercial_customer_id','SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql=IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='financial_charges' AND COLUMN_NAME='product_code')=0,'ALTER TABLE financial_charges ADD COLUMN product_code VARCHAR(40) NULL AFTER product_subscription_id','SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql=IF((SELECT COLUMN_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='financial_charges' AND COLUMN_NAME='payer_source') NOT LIKE '%COMMERCIAL%','ALTER TABLE financial_charges MODIFY COLUMN payer_source ENUM(''TENANT'',''COMMERCIAL'',''EXTERNAL'') NOT NULL','SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
-SET @sql=IF((SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='financial_charges' AND CONSTRAINT_NAME='chk_financial_external_tenant')>0,'ALTER TABLE financial_charges DROP CHECK chk_financial_external_tenant','SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
-SET @sql=IF((SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='financial_charges' AND CONSTRAINT_NAME='chk_financial_charge_owner')=0,'ALTER TABLE financial_charges ADD CONSTRAINT chk_financial_charge_owner CHECK (tenant_id IS NOT NULL OR product_subscription_id IS NOT NULL OR (type=''AD_HOC'' AND payer_source=''EXTERNAL''))','SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql=IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='financial_charges' AND INDEX_NAME='uq_financial_subscription_competence')=0,'ALTER TABLE financial_charges ADD UNIQUE KEY uq_financial_subscription_competence(product_subscription_id,type,competence)','SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 SET @sql=IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='financial_charges' AND INDEX_NAME='idx_financial_product_status')=0,'ALTER TABLE financial_charges ADD KEY idx_financial_product_status(product_code,status,due_date)','SELECT 1'); PREPARE s FROM @sql; EXECUTE s; DEALLOCATE PREPARE s;
 

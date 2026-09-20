@@ -79,7 +79,7 @@ async function prepareMovyoIntent(contractId:number,actorUserId:number){
     let subscriptionId=c.product_subscription_id==null?null:Number(c.product_subscription_id);
     if(!subscriptionId){
       const metadata={source:'commercial-contract',contractId:Number(c.id),proposalId:Number(c.proposal_id)};
-      const [insert]=await conn.query(`INSERT INTO product_subscriptions(commercial_customer_id,product_id,product_plan_id,tenant_id,external_source,external_account_id,billing_source,status,monthly_price,discount_percent,starts_at,current_period_start,current_period_end,next_due_date,billing_provider,billing_method,grace_days,auto_block,first_cycle_prorata_enabled,blocked_at,grace_until,metadata_json,created_at,updated_at)
+      const [insert]: any=await conn.query(`INSERT INTO product_subscriptions(commercial_customer_id,product_id,product_plan_id,tenant_id,external_source,external_account_id,billing_source,status,monthly_price,discount_percent,starts_at,current_period_start,current_period_end,next_due_date,billing_provider,billing_method,grace_days,auto_block,first_cycle_prorata_enabled,blocked_at,grace_until,metadata_json,created_at,updated_at)
         VALUES(?,?,?,NULL,NULL,NULL,'PONTO_CERTO','PROVISIONING',?,?,?,?,?,?,NULL,NULL,?,?,1,NULL,?,?,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL})`,[
           c.commercial_customer_id,c.product_id,c.product_plan_id,Number(c.price_monthly||c.catalog_monthly_price||0),discountPercent,`${startsAt} 00:00:00`,`${startsAt} 00:00:00`,`${dueDate} 23:59:59`,dueDate,graceDays,Number(c.default_auto_block??1),`${graceUntil} 23:59:59`,json(metadata)
         ]);
@@ -89,7 +89,7 @@ async function prepareMovyoIntent(contractId:number,actorUserId:number){
     const key=`movyo-provision:contract:${contractId}:subscription:${subscriptionId}`;
     await conn.query(`INSERT INTO product_sync_logs(product_subscription_id,product_code,external_account_id,action,status,idempotency_key,request_json,created_at)
       VALUES(?,'MOVYO',NULL,'PROVISION','PENDING',?,NULL,${BRASILIA_NOW_SQL}) ON DUPLICATE KEY UPDATE product_subscription_id=VALUES(product_subscription_id)`,[subscriptionId,key]);
-    const [subs]=await conn.query('SELECT * FROM product_subscriptions WHERE id=? FOR UPDATE',[subscriptionId]);const subscription=subs[0];
+    const [subs]: any=await conn.query('SELECT * FROM product_subscriptions WHERE id=? FOR UPDATE',[subscriptionId]);const subscription=subs[0];
     await conn.commit();
     return{c,customer,proposal,contract,commercial,discountPercent,graceDays,startsAt,dueDate,graceUntil,subscriptionId,key,subscription};
   }catch(error){await conn.rollback();throw error;}finally{conn.release();}
@@ -105,7 +105,7 @@ async function finalizeMovyoProvisioning(prepared:any,externalAccountId:string,r
   const conn=await pool.getConnection();
   try{
     await conn.beginTransaction();const c=await loadContract(conn,Number(prepared.c.id),true);
-    const [subs]=await conn.query('SELECT * FROM product_subscriptions WHERE id=? FOR UPDATE',[prepared.subscriptionId]);const current=subs[0];
+    const [subs]: any=await conn.query('SELECT * FROM product_subscriptions WHERE id=? FOR UPDATE',[prepared.subscriptionId]);const current=subs[0];
     if(!current)throw fail('Assinatura Movyo preparada não foi encontrada.',409,'PRODUCT_SUBSCRIPTION_NOT_FOUND');
     if(current.external_account_id&&String(current.external_account_id)!==String(externalAccountId))throw fail('A assinatura já está vinculada a outro restaurante Movyo.',409,'MOVYO_EXTERNAL_ACCOUNT_CONFLICT');
     await conn.query(`UPDATE product_subscriptions SET external_source='MOVYO',external_account_id=?,billing_source='PONTO_CERTO',status='GRACE',current_period_start=?,current_period_end=?,next_due_date=?,grace_until=?,blocked_at=NULL,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[externalAccountId,`${prepared.startsAt} 00:00:00`,`${prepared.dueDate} 23:59:59`,prepared.dueDate,`${prepared.graceUntil} 23:59:59`,prepared.subscriptionId]);
