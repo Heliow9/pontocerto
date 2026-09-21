@@ -41,8 +41,9 @@ export function apiMessage(
   error: any,
   fallback = "Não foi possível concluir a operação.",
 ) {
+  const data=error?.response?.data;
   return (
-    error?.response?.data?.message ||
+    data?.message || data?.detail || data?.error ||
     (error instanceof Error && !error.message.startsWith("Network")
       ? error.message
       : fallback)

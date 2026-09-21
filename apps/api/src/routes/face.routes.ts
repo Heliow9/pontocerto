@@ -39,7 +39,7 @@ async function withPhotoLock(
   const key = "pc:punch:" + tenantId + ":" + employeeId;
   let locked = false;
   try {
-    const [rows] = await db.query("SELECT GET_LOCK(?,5) AS acquired", [
+    const [rows]: any = await db.query("SELECT GET_LOCK(?,5) AS acquired", [
       key,
     ]);
     locked = Number(rows[0]?.acquired) === 1;

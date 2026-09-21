@@ -9,7 +9,7 @@ import {apiMessage} from '../utils';
 const empty={legalName:'',tradeName:'',document:'',email:'',phone:'',financialContactName:'',financialContactDocument:'',financialContactEmail:'',financialContactPhone:'',zipCode:'',street:'',number:'',complement:'',district:'',city:'',state:'',status:'ACTIVE'};
 const toForm=(row:any)=>({
   legalName:row?.legal_name??'',tradeName:row?.trade_name??'',document:row?.document??'',email:row?.email??'',phone:row?.phone??'',
-  financialContactName:row?.financial_contact_name??'',financialContactDocument:row?.financial_contact_document??'',financialContactEmail:row?.financial_contact_email??'',financialContactPhone:row?.financial_contact_phone??'',
+  financialContactName:row?.financial_contact_name??'',financialContactDocument:String(row?.financial_contact_document??'').replace(/\D/g,'').length===11?String(row?.financial_contact_document??''):'',financialContactEmail:row?.financial_contact_email??'',financialContactPhone:row?.financial_contact_phone??'',
   zipCode:row?.zip_code??'',street:row?.street??'',number:row?.number??'',complement:row?.complement??'',district:row?.district??'',city:row?.city??'',state:row?.state??'',status:row?.status??'ACTIVE'
 });
 
@@ -43,7 +43,7 @@ export function SaasCommercialCustomers(){
     <label>E-mail<input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})}/></label>
     <label>Telefone<MaskedInput mask="phone" value={form.phone} onChange={phone=>setForm({...form,phone})}/></label>
     <label>Responsável financeiro<input value={form.financialContactName} onChange={e=>setForm({...form,financialContactName:e.target.value})}/></label>
-    <label>CPF/CNPJ responsável financeiro<MaskedInput mask="cpfCnpj" value={form.financialContactDocument} onChange={financialContactDocument=>setForm({...form,financialContactDocument})}/></label>
+    <label>CPF do responsável financeiro<MaskedInput mask="cpf" placeholder="000.000.000-00" value={form.financialContactDocument} onChange={financialContactDocument=>setForm({...form,financialContactDocument})}/></label>
     <label>E-mail financeiro<input type="email" value={form.financialContactEmail} onChange={e=>setForm({...form,financialContactEmail:e.target.value})}/></label>
     <label>Telefone financeiro<MaskedInput mask="phone" value={form.financialContactPhone} onChange={financialContactPhone=>setForm({...form,financialContactPhone})}/></label>
     <label>CEP<MaskedInput mask="cep" value={form.zipCode} onChange={zipCode=>setForm({...form,zipCode})}/></label>

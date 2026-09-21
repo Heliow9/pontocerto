@@ -1,15 +1,23 @@
-PONTO CERTO — RELEASE V4.1.3
-Data: 2026-09-20
-Base: apps(5).zip fornecido para validação/hardening
+PONTO CERTO — RELEASE V4.1.3 HF2
+Data: 2026-09-21
+Base: V4.1.3 + HF1 CPF responsável financeiro
 
 Escopo principal:
-- Hardening financeiro multiproduto (Ponto Certo / Movyo / PayHub)
-- Recuperação automática de emissão ISSUING sem provider_charge_id
-- Reemissão idempotente e recuperável com desconto/vencimento pontual
-- Mensalidade de Produto disponível na interface Financeiro
-- Dashboard financeiro multiproduto
-- Validação real de CPF/CNPJ
-- Mensagens de erro de provedores legíveis
-- Bloqueio de pró-rata retroativo para assinaturas Movyo migradas
+- Erros financeiros explícitos e orientados à ação (Efí / Cora / Mercado Pago)
+- Rejeições comerciais determinísticas encerradas como FAILED, sem falso ISSUING
+- Nova revisão automática para mensalidade cancelada na mesma competência
+- Correção definitiva do INSERT de financial_charges com revision
+- Web Push/PWA para confirmação de pagamento no painel SUPER_ADMIN
+- Migration 030 para assinaturas/entregas de push financeiro
+- Service Worker abre Recebimentos ao tocar na notificação
+- Financeiro responsivo em cards no mobile/PWA, touch targets e modais com ações sticky
+- Histórico financeiro com rótulos amigáveis mantendo código técnico
+- HF1 mantido: responsável financeiro aceita somente CPF e validações retornam HTTP 400
 - Compatibilidade MySQL 5.6 preservada
 - Empacotamento sem .env, storage, certificados, node_modules ou dist antigos
+
+Validação local desta entrega:
+- API core: 50 testes aprovados
+- Source/regressão/UI incluindo HF2: 34 testes aprovados
+- Sintaxe TypeScript/TSX dos arquivos alterados validada por transpileModule
+- Service Worker gerado e validado com URL dinâmica de notificação

@@ -7,3 +7,6 @@ declare module "node:crypto" {
 }
 type Buffer = any;
 declare const Buffer: any;
+declare module "node:https" { const https: any; export default https; export type RequestOptions = any; }
+declare module "node:http" { export type IncomingHttpHeaders = Record<string, any>; }
+declare module "node:fs" { const fs: any; export default fs; }

@@ -7,13 +7,14 @@ export type CommercialCustomerInput={
 const digits=(v:unknown)=>String(v??'').replace(/\D/g,'');
 const text=(v:unknown)=>{const s=String(v??'').trim();return s||null;};
 const lower=(v:unknown)=>{const s=text(v);return s?.toLowerCase()??null;};
+const validationError=(message:string,code:string)=>Object.assign(new Error(message),{status:400,code});
 export function normalizeCommercialCustomer(input:CommercialCustomerInput){
-  const legalName=String(input.legalName??'').trim(); if(!legalName)throw new Error('Informe a razão social ou nome do cliente comercial.');
+  const legalName=String(input.legalName??'').trim(); if(!legalName)throw validationError('Informe a razão social ou nome do cliente comercial.','COMMERCIAL_CUSTOMER_NAME_REQUIRED');
   const document=digits(input.document)||null; const inferred=document?.length===11?'PF':'PJ'; const personType=input.personType||inferred;
-  if(document&&!isValidBrazilDocument(document,personType))throw new Error(personType==='PF'?'CPF do cliente comercial inválido.':'CNPJ do cliente comercial inválido.');
-  const state=text(input.state)?.toUpperCase()??null;if(state&&state.length!==2)throw new Error('UF deve possuir 2 letras.');
+  if(document&&!isValidBrazilDocument(document,personType))throw validationError(personType==='PF'?'CPF do cliente comercial inválido.':'CNPJ do cliente comercial inválido.',personType==='PF'?'COMMERCIAL_CUSTOMER_CPF_INVALID':'COMMERCIAL_CUSTOMER_CNPJ_INVALID');
+  const state=text(input.state)?.toUpperCase()??null;if(state&&state.length!==2)throw validationError('UF deve possuir 2 letras.','COMMERCIAL_CUSTOMER_STATE_INVALID');
   const financialContactDocument=digits(input.financialContactDocument)||null;
-  if(financialContactDocument&&!isValidBrazilDocument(financialContactDocument,'PF'))throw new Error('CPF do responsável financeiro inválido.');
+  if(financialContactDocument&&!isValidBrazilDocument(financialContactDocument,'PF'))throw validationError('CPF do responsável financeiro inválido.','FINANCIAL_CONTACT_CPF_INVALID');
   return{legalName,tradeName:text(input.tradeName),personType,document,email:lower(input.email),phone:digits(input.phone)||null,
     financialContactName:text(input.financialContactName),financialContactDocument,
     financialContactEmail:lower(input.financialContactEmail),financialContactPhone:digits(input.financialContactPhone)||null,

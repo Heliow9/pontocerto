@@ -10,6 +10,24 @@ import {
 
 export const webPushReady = () =>
   Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY);
+
+export async function sendWebPushPayload(destination:string,payload:{title:string;body?:string;url?:string;tag?:string;expiresAt?:number},options:{ttl?:number;urgency?:"very-low"|"low"|"normal"|"high"}={}) {
+  if(!webPushReady()) throw new Error("VAPID_NOT_CONFIGURED");
+  await webpush.sendNotification(
+    JSON.parse(destination),
+    JSON.stringify(payload),
+    {
+      TTL: options.ttl??86400,
+      timeout: 10000,
+      urgency: options.urgency??"high",
+      vapidDetails: {
+        subject: env.VAPID_SUBJECT,
+        publicKey: env.VAPID_PUBLIC_KEY!,
+        privateKey: env.VAPID_PRIVATE_KEY!,
+      },
+    },
+  );
+}
 export async function employeeReminderEvents(
   employee: {
     id: number;

@@ -11,6 +11,8 @@ import { configurePaymentProviderWebhook, getFinancialProviderSettings, testPaym
 import { exceptionEndFromPreset } from "../services/financial-access-core.js";
 import { writeAudit } from "../utils/audit.js";
 import { listChargeDeliveries, sendFinancialChargeEmail } from "../services/financial-email.service.js";
+import { permittedPushEndpoint } from "../services/reminder-times.js";
+import { disableFinancialPushSubscription, getFinancialPushSettings, saveFinancialPushSubscription } from "../services/financial-push.service.js";
 
 export const saasFinanceRouter=Router();
 const id=(v:unknown)=>z.coerce.number().int().positive().parse(v);
@@ -25,6 +27,11 @@ const sendCsv=(res:any,filename:string,body:string)=>{res.setHeader("Content-Typ
 
 
 saasFinanceRouter.get("/dashboard",safe(async(_req,res)=>res.json(await getFinancialDashboard())));
+
+const financialPushSchema=z.object({deviceKey:z.string().regex(/^[a-zA-Z0-9_-]{16,80}$/),paymentConfirmed:z.boolean().optional().default(true),subscription:z.object({endpoint:z.string().max(2048).refine(permittedPushEndpoint),keys:z.object({p256dh:z.string().min(40).max(180),auth:z.string().min(10).max(100)})}).strict()}).strict();
+saasFinanceRouter.get("/notifications/settings",safe(async(req,res)=>res.json(await getFinancialPushSettings(req.auth!.userId))));
+saasFinanceRouter.put("/notifications/subscription",safe(async(req,res)=>{const d=financialPushSchema.parse(req.body);res.json(await saveFinancialPushSubscription({userId:req.auth!.userId,deviceKey:d.deviceKey,destination:d.subscription,paymentConfirmed:d.paymentConfirmed}));}));
+saasFinanceRouter.delete("/notifications/subscription/:deviceKey",safe(async(req,res)=>{const deviceKey=z.string().regex(/^[a-zA-Z0-9_-]{16,80}$/).parse(req.params.deviceKey);res.json(await disableFinancialPushSubscription(req.auth!.userId,deviceKey));}));
 saasFinanceRouter.get("/charges",safe(async(req,res)=>{const q=z.object({tenantId:z.coerce.number().int().positive().optional(),status:z.enum(["DRAFT","ISSUING","OPEN","OVERDUE","PAID","CANCELED","FAILED"]).optional(),type:z.enum(["MONTHLY","IMPLEMENTATION","AD_HOC"]).optional(),provider:providerSchema.optional(),paymentMethod:methodSchema.optional(),from:date.optional(),to:date.optional(),limit:z.coerce.number().int().min(1).max(500).optional()}).parse(req.query);res.json(await listCharges(q));}));
 saasFinanceRouter.post("/charges/monthly",safe(async(req,res)=>{const d=chargeCommon.extend({tenantId:z.coerce.number().int().positive(),competence:z.string().regex(/^\d{4}-\d{2}$/)}).parse(req.body);const charge=await createMonthlyCharge(d.tenantId,d.competence,req.auth!.userId,{issue:d.issue,sendEmailAfterIssue:chargeEmailPreference(d)});await writeAudit(req,"CREATE","financial_charge",charge.id,undefined,{type:"MONTHLY",tenantId:d.tenantId,competence:d.competence,provider:charge.provider,paymentMethod:charge.requested_payment_method});res.status(charge.alreadyExists?200:201).json(charge);}));
 saasFinanceRouter.post("/charges/product-monthly",safe(async(req,res)=>{const d=chargeCommon.extend({subscriptionId:z.coerce.number().int().positive(),competence:z.string().regex(/^\d{4}-\d{2}$/)}).parse(req.body);const charge=await createProductSubscriptionMonthlyCharge(d.subscriptionId,d.competence,req.auth!.userId,{issue:d.issue,sendEmailAfterIssue:chargeEmailPreference(d)});await writeAudit(req,"CREATE","financial_charge",charge.id,undefined,{type:"MONTHLY",productSubscriptionId:d.subscriptionId,productCode:charge.product_code,competence:d.competence,provider:charge.provider,paymentMethod:charge.requested_payment_method});res.status(charge.alreadyExists?200:201).json(charge);}));

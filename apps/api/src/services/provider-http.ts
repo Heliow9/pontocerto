@@ -1,4 +1,4 @@
-import https from "node:https";
+import https, {type RequestOptions as HttpsRequestOptions} from "node:https";
 import type { IncomingHttpHeaders } from "node:http";
 import fs from "node:fs";
 
@@ -20,7 +20,7 @@ export async function httpsRequest(urlString:string, options:RequestOptions={}){
   const url=new URL(urlString);const body=options.body??null;
   const headers:Record<string,string>={...(options.headers||{})};
   if(body!=null&&!headers["Content-Length"])headers["Content-Length"]=String(Buffer.byteLength(body));
-  const requestOptions:https.RequestOptions={
+  const requestOptions:HttpsRequestOptions={
     protocol:url.protocol,hostname:url.hostname,port:url.port||443,path:`${url.pathname}${url.search}`,
     method:options.method||"GET",headers,timeout:options.timeoutMs||25000,
   };
@@ -35,7 +35,7 @@ export async function httpsRequest(urlString:string, options:RequestOptions={}){
   });
 }
 
-function readableProviderValue(value:any,depth=0):string{
+export function readableProviderValue(value:any,depth=0):string{
   if(value==null||depth>4)return '';
   if(typeof value==='string')return value.trim();
   if(typeof value==='number'||typeof value==='boolean')return String(value);
