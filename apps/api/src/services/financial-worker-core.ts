@@ -36,3 +36,10 @@ export function productSubscriptionFinancialState(input:{chargeStatus?:string|nu
   if(blockAt&&today>=blockAt)return'BLOCKED';
   return'GRACE';
 }
+
+export function shouldAutomaticallyReconcileProviderCharge(input:{status?:string|null;providerChargeId?:string|null;providerYourNumber?:string|null}){
+  const status=String(input.status||'').toUpperCase();
+  if(status==='ISSUING')return Boolean(input.providerChargeId||input.providerYourNumber);
+  if(['OPEN','OVERDUE'].includes(status))return Boolean(input.providerChargeId);
+  return false;
+}

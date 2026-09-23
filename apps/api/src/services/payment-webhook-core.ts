@@ -14,3 +14,22 @@ export function mercadoPagoSignatureValid(input:{signature?:string|null;requestI
   const expected=createHmac("sha256",input.secret).update(manifest).digest("hex");
   try{return timingSafeEqual(Buffer.from(expected,"hex"),Buffer.from(received,"hex"));}catch{return false;}
 }
+
+export type MercadoPagoNotificationResource={
+  paymentId:string|null;
+  mode:"WEBHOOK"|"IPN"|"UNKNOWN";
+  topic:string|null;
+};
+
+export function resolveMercadoPagoNotificationResource(payload:any,query:Record<string,any>={}):MercadoPagoNotificationResource{
+  const explicitDataId=query["data.id"]??query.data_id??payload?.data?.id;
+  const topic=String(query.type??query.topic??payload?.type??"").trim().toLowerCase()||null;
+  if(explicitDataId!=null&&String(explicitDataId).trim()){
+    return{paymentId:String(explicitDataId).trim(),mode:"WEBHOOK",topic};
+  }
+  const legacyId=query.id;
+  if(legacyId!=null&&String(legacyId).trim()&&["payment","payments"].includes(String(topic||""))){
+    return{paymentId:String(legacyId).trim(),mode:"IPN",topic};
+  }
+  return{paymentId:null,mode:"UNKNOWN",topic};
+}

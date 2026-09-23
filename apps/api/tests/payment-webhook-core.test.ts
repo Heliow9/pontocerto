@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { mercadoPagoSignatureValid, stableWebhookEventKey } from "../src/services/payment-webhook-core.js";
+import { mercadoPagoSignatureValid, stableWebhookEventKey, resolveMercadoPagoNotificationResource } from "../src/services/payment-webhook-core.js";
 
 test("stable webhook key is deterministic for the same payload",()=>{
   const payload={id:123,type:"invoice.paid"};
@@ -21,4 +21,13 @@ test("Mercado Pago signature validates the documented manifest",()=>{
 
 test("Mercado Pago invalid signature is rejected",()=>{
   assert.equal(mercadoPagoSignatureValid({signature:"ts=1720000000,v1=00",requestId:"req",dataId:"1",secret:"secret"}),false);
+});
+
+test("Mercado Pago resolve data.id de webhook moderno",()=>{
+  assert.deepEqual(resolveMercadoPagoNotificationResource({type:"payment",data:{id:"123"}},{"data.id":"123",type:"payment"}),{paymentId:"123",mode:"WEBHOOK",topic:"payment"});
+});
+
+test("Mercado Pago aceita fallback IPN payment somente para reconciliação autenticada no provedor",()=>{
+  assert.deepEqual(resolveMercadoPagoNotificationResource({}, {id:"456",topic:"payment"}),{paymentId:"456",mode:"IPN",topic:"payment"});
+  assert.equal(resolveMercadoPagoNotificationResource({}, {id:"ORD-1",topic:"merchant_order"}).paymentId,null);
 });

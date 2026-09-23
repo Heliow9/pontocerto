@@ -2,10 +2,11 @@ import { pool } from "../db/pool.js";
 import { env } from "../config/env.js";
 import { todayInBrasilia } from "./financial-rules.js";
 import { financialWorkerDateContext, shouldGenerateProductMonthly } from "./financial-worker-core.js";
-import { createMonthlyCharge, createProductSubscriptionMonthlyCharge, listAmbiguousCharges, markOverdueCharges, reconcileCharge } from "./financial.service.js";
+import { createMonthlyCharge, createProductSubscriptionMonthlyCharge, listAutomaticReconciliationCandidates, markOverdueCharges, reconcileCharge } from "./financial.service.js";
 import { getTenantFinancialAccess, syncSubscriptionFinancialStatus } from "./financial-access.service.js";
 import { syncProductFinancialAccess } from "./product-financial-access.service.js";
 import { retryFailedProviderWebhooks } from "./payment-webhook.service.js";
+import { syncSubscriptionOperationalState } from "./product-integration.service.js";
 
 let running=false;
 let timer:ReturnType<typeof setInterval>|null=null;
@@ -13,7 +14,7 @@ let timer:ReturnType<typeof setInterval>|null=null;
 export async function runFinancialWorker() {
   if(running)return {skipped:true};
   running=true;
-  const summary={monthlyCreated:0,monthlyErrors:0,productMonthlyCreated:0,productMonthlyErrors:0,emailSent:0,emailErrors:0,overdue:0,reconciled:0,reconcileErrors:0,accessSynced:0,accessErrors:0,productAccessSynced:0,productAccessErrors:0,webhooksRetried:0};
+  const summary={monthlyCreated:0,monthlyErrors:0,productMonthlyCreated:0,productMonthlyErrors:0,emailSent:0,emailErrors:0,overdue:0,reconciled:0,reconcileErrors:0,accessSynced:0,accessErrors:0,productAccessSynced:0,productAccessErrors:0,webhooksRetried:0,movyoSyncRetried:0,movyoSyncErrors:0};
   try{
     summary.overdue=await markOverdueCharges();
     const context=financialWorkerDateContext(todayInBrasilia());
@@ -36,7 +37,7 @@ export async function runFinancialWorker() {
       catch(error){summary.productMonthlyErrors++;console.error("[financial-worker] product-monthly",row.id,error instanceof Error?error.message:error);}
     }
 
-    for(const chargeId of await listAmbiguousCharges(50)){
+    for(const chargeId of await listAutomaticReconciliationCandidates(100)){
       try{await reconcileCharge(chargeId,null);summary.reconciled++;}catch(error){summary.reconcileErrors++;console.error("[financial-worker] reconcile",chargeId,error instanceof Error?error.message:error);}
     }
     const retried=await retryFailedProviderWebhooks(25);summary.webhooksRetried=retried.length;
@@ -49,6 +50,21 @@ export async function runFinancialWorker() {
     for(const row of externalSubscriptions){
       try{await syncProductFinancialAccess(Number(row.id),context.date);summary.productAccessSynced++;}
       catch(error){summary.productAccessErrors++;console.error("[financial-worker] product-access",row.id,error instanceof Error?error.message:error);}
+    }
+
+    // Se a baixa confirmou o pagamento mas a ponte Movyo estava indisponível naquele instante,
+    // o log fica FAILED. O financeiro passa a reenviar o estado mais recente automaticamente,
+    // evitando restaurante pago permanecer bloqueado até intervenção manual.
+    const [failedMovyoSyncs]=await pool.query<any[]>(`SELECT l.product_subscription_id AS id
+      FROM product_sync_logs l
+      JOIN (SELECT product_subscription_id,MAX(id) AS max_id FROM product_sync_logs WHERE product_code='MOVYO' GROUP BY product_subscription_id) latest
+        ON latest.product_subscription_id=l.product_subscription_id AND latest.max_id=l.id
+      JOIN product_subscriptions ps ON ps.id=l.product_subscription_id
+      WHERE l.product_code='MOVYO' AND l.status='FAILED' AND ps.billing_source='PONTO_CERTO'
+      ORDER BY l.id ASC LIMIT 50`);
+    for(const row of failedMovyoSyncs){
+      try{await syncSubscriptionOperationalState(Number(row.id),'FINANCIAL_SYNC_RETRY');summary.movyoSyncRetried++;}
+      catch(error){summary.movyoSyncErrors++;console.error("[financial-worker] movyo-sync-retry",row.id,error instanceof Error?error.message:error);}
     }
     return summary;
   }finally{running=false;}

@@ -43,7 +43,10 @@ export async function grantProductFinancialException(input:{subscriptionId:numbe
   if(terminal.has(String(row.status)))throw accessError('Esta assinatura não pode receber liberação temporária no status atual.',409,'PRODUCT_EXCEPTION_STATUS_INVALID');
   await pool.query(`UPDATE product_subscriptions SET grace_until=?,status='GRACE',blocked_at=NULL,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[endsAt,input.subscriptionId]);
   await recordFinancialEvent({tenantId:row.tenant_id==null?null:Number(row.tenant_id),productSubscriptionId:input.subscriptionId,eventType:'PRODUCT_FINANCIAL_ACCESS_EXCEPTION_GRANTED',actorUserId:input.actorUserId,details:{endsAt:endsAt.toISOString(),reason:String(input.reason).trim()}});
-  await syncSubscriptionOperationalState(input.subscriptionId,'FINANCIAL_EXCEPTION_GRANTED').catch(error=>console.error('[product-financial-access] grant sync',input.subscriptionId,error instanceof Error?error.message:error));
+  // A liberação administrativa só é considerada concluída quando a Movyo recebe o espelho.
+  // Não escondemos falhas aqui: caso a ponte esteja indisponível, a UI deve informar o erro
+  // para evitar o falso cenário de "liberado no Ponto Certo, bloqueado na Movyo".
+  await syncSubscriptionOperationalState(input.subscriptionId,'FINANCIAL_EXCEPTION_GRANTED');
   return getProductFinancialAccess(input.subscriptionId);
 }
 
@@ -53,6 +56,8 @@ export async function revokeProductFinancialException(input:{subscriptionId:numb
   await pool.query(`UPDATE product_subscriptions SET grace_until=NULL,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,[input.subscriptionId]);
   await recordFinancialEvent({tenantId:row.tenant_id==null?null:Number(row.tenant_id),productSubscriptionId:input.subscriptionId,eventType:'PRODUCT_FINANCIAL_ACCESS_EXCEPTION_REVOKED',actorUserId:input.actorUserId,details:{previousGraceUntil:row.grace_until||null}});
   const access=await syncProductFinancialAccess(input.subscriptionId);
-  if(!access.changed)await syncSubscriptionOperationalState(input.subscriptionId,'FINANCIAL_EXCEPTION_REVOKED').catch(error=>console.error('[product-financial-access] revoke sync',input.subscriptionId,error instanceof Error?error.message:error));
+  // Em ação administrativa, a sincronização remota é parte da operação.
+  if(!access.changed)await syncSubscriptionOperationalState(input.subscriptionId,'FINANCIAL_EXCEPTION_REVOKED');
+  else await syncSubscriptionOperationalState(input.subscriptionId,'FINANCIAL_EXCEPTION_REVOKED_CONFIRMED');
   return getProductFinancialAccess(input.subscriptionId);
 }

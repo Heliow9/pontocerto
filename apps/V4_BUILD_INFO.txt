@@ -1,3 +1,13 @@
+PONTO CERTO — RELEASE V4.1.3 HF3
+Data: 2026-09-23
+Base: V4.1.3 HF2 + correções de bloqueio financeiro Movyo
+
+Escopo adicional HF3:
+- baixa automática resiliente via webhook + reconciliação periódica OPEN/OVERDUE
+- fallback seguro para IPN Mercado Pago do tópico payment
+- retry automático de sincronização Movyo após pagamento/liberação
+- mantém regra D+3 e liberação manual sincronizada
+
 PONTO CERTO — RELEASE V4.1.3 HF2
 Data: 2026-09-21
 Base: V4.1.3 + HF1 CPF responsável financeiro

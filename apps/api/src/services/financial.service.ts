@@ -363,4 +363,17 @@ export async function getFinancialDashboard(){
 }
 
 export async function markOverdueCharges(){const today=todayInBrasilia();const [result]=await pool.query<any>(`UPDATE financial_charges SET status='OVERDUE',updated_at=${BRASILIA_NOW_SQL} WHERE status='OPEN' AND due_date<?`,[today]);return Number(result.affectedRows||0);}
-export async function listAmbiguousCharges(limit=50){const [rows]=await pool.query<any[]>(`SELECT id FROM financial_charges WHERE status='ISSUING' AND provider IN ('CORA','EFI','MERCADO_PAGO') ORDER BY updated_at ASC LIMIT ${Math.min(200,Math.max(1,limit))}`);return rows.map((r:any)=>Number(r.id));}
+export async function listAutomaticReconciliationCandidates(limit=100){
+  const safeLimit=Math.min(250,Math.max(1,limit));
+  const [rows]=await pool.query<any[]>(`SELECT id FROM financial_charges
+    WHERE provider IN ('CORA','EFI','MERCADO_PAGO')
+      AND updated_at<=DATE_SUB(${BRASILIA_NOW_SQL},INTERVAL 5 MINUTE)
+      AND (status='ISSUING' OR (status IN ('OPEN','OVERDUE') AND provider_charge_id IS NOT NULL))
+    ORDER BY CASE status WHEN 'OVERDUE' THEN 0 WHEN 'ISSUING' THEN 1 ELSE 2 END,updated_at ASC,id ASC
+    LIMIT ${safeLimit}`);
+  return rows.map((r:any)=>Number(r.id));
+}
+
+// Compatibilidade com chamadas antigas. Agora a rotina também recupera pagamentos
+// OPEN/OVERDUE quando o webhook não chegar ou falhar.
+export async function listAmbiguousCharges(limit=100){return listAutomaticReconciliationCandidates(limit);}

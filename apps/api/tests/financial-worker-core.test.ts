@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { financialWorkerDateContext, shouldGenerateMonthly, shouldAttemptAutomaticDelivery, productSubscriptionFinancialState, shouldGenerateProductMonthly } from "../src/services/financial-worker-core.js";
+import { financialWorkerDateContext, shouldGenerateMonthly, shouldAttemptAutomaticDelivery, productSubscriptionFinancialState, shouldGenerateProductMonthly, shouldAutomaticallyReconcileProviderCharge } from "../src/services/financial-worker-core.js";
 
 test("mensalidade automática só é gerada no dia 1",()=>{
   assert.equal(shouldGenerateMonthly("2026-10-01"),true);
@@ -30,4 +30,12 @@ test("assinatura de produto respeita tolerância antes do bloqueio",()=>{
   assert.equal(productSubscriptionFinancialState({...base,today:"2026-10-20",graceUntil:"2026-10-25"}),"GRACE");
   assert.equal(productSubscriptionFinancialState({...base,today:"2026-10-20",autoBlock:false}),"GRACE");
   assert.equal(productSubscriptionFinancialState({...base,today:"2026-10-20",chargeStatus:"PAID"}),"ACTIVE");
+});
+
+test("reconciliação automática cobre cobranças emitidas abertas e vencidas",()=>{
+  assert.equal(shouldAutomaticallyReconcileProviderCharge({status:"OPEN",providerChargeId:"PAYMENT:1"}),true);
+  assert.equal(shouldAutomaticallyReconcileProviderCharge({status:"OVERDUE",providerChargeId:"PAYMENT:2"}),true);
+  assert.equal(shouldAutomaticallyReconcileProviderCharge({status:"ISSUING",providerYourNumber:"PC-3"}),true);
+  assert.equal(shouldAutomaticallyReconcileProviderCharge({status:"OPEN",providerChargeId:null}),false);
+  assert.equal(shouldAutomaticallyReconcileProviderCharge({status:"PAID",providerChargeId:"PAYMENT:4"}),false);
 });

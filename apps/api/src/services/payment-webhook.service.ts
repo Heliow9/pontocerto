@@ -3,9 +3,10 @@ import { env } from "../config/env.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 import type { PaymentProviderCode } from "./payment-provider.types.js";
 import { isPaymentProviderCode } from "./payment-provider-core.js";
-import { stableWebhookEventKey, mercadoPagoSignatureValid } from "./payment-webhook-core.js";
+import { stableWebhookEventKey, mercadoPagoSignatureValid, resolveMercadoPagoNotificationResource } from "./payment-webhook-core.js";
 import { resolveEfiNotificationToken } from "./efi-provider.js";
 import { reconcileCharge } from "./financial.service.js";
+import { getPaymentProvider } from "./provider-registry.js";
 
 const asString=(v:any)=>v==null?null:String(v);
 async function locateCharge(provider:PaymentProviderCode,providerChargeId:string|null,externalReference:string|null){
@@ -36,13 +37,40 @@ export async function processEfiWebhook(payload:any){
 }
 
 export async function processMercadoPagoWebhook(payload:any,headers:Record<string,any>,query:Record<string,any>){
-  const dataId=asString(query["data.id"]||payload?.data?.id);const signature=asString(headers["x-signature"]);const requestId=asString(headers["x-request-id"]);
-  if(!mercadoPagoSignatureValid({signature,requestId,dataId,secret:env.MP_WEBHOOK_SECRET}))throw Object.assign(new Error("Assinatura do webhook Mercado Pago inválida."),{status:401,code:"INVALID_WEBHOOK_SIGNATURE"});
-  return process("MERCADO_PAGO",{payload,eventKey:asString(payload?.id)||requestId,providerChargeId:dataId?`PAYMENT:${dataId}`:null});
+  const resource=resolveMercadoPagoNotificationResource(payload,query);
+  const dataId=asString(resource.paymentId);
+  const signature=asString(headers["x-signature"]);
+  const requestId=asString(headers["x-request-id"]);
+  if(!dataId)throw Object.assign(new Error("Notificação Mercado Pago sem identificador de pagamento."),{status:400,code:"MP_WEBHOOK_PAYMENT_ID_MISSING"});
+
+  // Webhooks atuais são autenticados por HMAC. O fallback IPN é aceito apenas para o
+  // tópico payment e nunca confia no corpo: ele apenas dispara uma consulta autenticada
+  // à API do Mercado Pago durante reconcileCharge antes de qualquer baixa local.
+  if(resource.mode==="WEBHOOK"&&!mercadoPagoSignatureValid({signature,requestId,dataId,secret:env.MP_WEBHOOK_SECRET}))
+    throw Object.assign(new Error("Assinatura do webhook Mercado Pago inválida."),{status:401,code:"INVALID_WEBHOOK_SIGNATURE"});
+
+  const eventKey=resource.mode==="IPN"
+    ?`ipn:${resource.topic||"payment"}:${dataId}`
+    :(asString(payload?.id)||requestId||`webhook:${dataId}`);
+
+  // O webhook pode chegar milissegundos antes de applyProviderDetails persistir provider_charge_id.
+  // Nessa janela recuperamos o external_reference no próprio Mercado Pago e localizamos a cobrança
+  // por provider_your_number. A consulta remota é autenticada e não confia no conteúdo do callback.
+  let externalReference:string|null=null;
+  const localByProviderId=await locateCharge("MERCADO_PAGO",`PAYMENT:${dataId}`,null);
+  if(!localByProviderId){
+    try{
+      const remote=await getPaymentProvider("MERCADO_PAGO").getCharge(`PAYMENT:${dataId}`,"","BOLETO");
+      externalReference=asString(remote?.externalReference);
+    }catch(error:any){
+      throw Object.assign(new Error(`Não foi possível confirmar a notificação no Mercado Pago: ${String(error?.message||error)}`),{status:503,code:"MP_WEBHOOK_CONFIRMATION_FAILED"});
+    }
+  }
+  return process("MERCADO_PAGO",{payload:{...payload,_notificationMode:resource.mode,_notificationQuery:query},eventKey,providerChargeId:`PAYMENT:${dataId}`,externalReference});
 }
 
 export async function retryFailedProviderWebhooks(limit=25){
   const [rows]=await pool.query<any[]>(`SELECT provider,payload_json,event_key FROM financial_webhook_events WHERE provider IN ('CORA','EFI','MERCADO_PAGO') AND status='FAILED' ORDER BY received_at ASC LIMIT ${Math.min(100,Math.max(1,limit))}`);const results:any[]=[];
-  for(const row of rows){if(!isPaymentProviderCode(row.provider))continue;try{const payload=JSON.parse(row.payload_json);if(row.provider==="CORA")results.push(await processCoraWebhook(payload));else if(row.provider==="EFI")results.push(await processEfiWebhook(payload));else results.push(await process("MERCADO_PAGO",{payload,eventKey:row.event_key,providerChargeId:payload?.data?.id?`PAYMENT:${payload.data.id}`:null}));}catch{/* isolate */}}
+  for(const row of rows){if(!isPaymentProviderCode(row.provider))continue;try{const payload=JSON.parse(row.payload_json);if(row.provider==="CORA")results.push(await processCoraWebhook(payload));else if(row.provider==="EFI")results.push(await processEfiWebhook(payload));else{const resource=resolveMercadoPagoNotificationResource(payload,payload?._notificationQuery||{});results.push(await process("MERCADO_PAGO",{payload,eventKey:row.event_key,providerChargeId:resource.paymentId?`PAYMENT:${resource.paymentId}`:null}));}}catch{/* isolate */}}
   return results;
 }
