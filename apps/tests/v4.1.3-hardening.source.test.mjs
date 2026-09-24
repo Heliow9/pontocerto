@@ -78,3 +78,11 @@ test('no known broken product endpoint or generic call on untyped face db remain
   assert.doesNotMatch(subscriptions,/\/saas\/commercial-products/);
   assert.doesNotMatch(face,/db\.query<any\[\]>/);
 });
+
+test('Cora webhook keeps header identifiers for automatic retries',()=>{
+  const webhook=read('api/src/services/payment-webhook.service.ts');
+  assert.match(webhook,/_coraWebhook/);
+  assert.match(webhook,/webhook-resource-id/);
+  assert.match(webhook,/saved\.resourceId/);
+  assert.match(webhook,/storedPayload/);
+});
