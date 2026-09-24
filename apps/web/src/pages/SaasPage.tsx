@@ -6,6 +6,7 @@ import {
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { MaskedInput } from "../components/MaskedInput";
+import { CepLookupInput } from "../components/CepLookupInput";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Modal } from "../components/Modal";
@@ -456,12 +457,19 @@ export function SaasPage({
             <div className="section-label span-2">Endereço de faturamento</div>
             <label>
               CEP
-              <MaskedInput
-                mask="cep"
+              <CepLookupInput
                 value={form.billingZipCode}
-                onChange={(billingZipCode) =>
-                  setForm({ ...form, billingZipCode })
-                }
+                onChange={(billingZipCode) => setForm((current: any) => ({ ...current, billingZipCode }))}
+                onAddressFound={(address) => setForm((current: any) => ({
+                  ...current,
+                  billingZipCode: address.zipCode,
+                  billingStreet: address.street,
+                  billingComplement: address.complement,
+                  billingDistrict: address.district,
+                  billingCity: address.city,
+                  billingState: address.state,
+                  billingNumber: "",
+                }))}
               />
             </label>
             <label>

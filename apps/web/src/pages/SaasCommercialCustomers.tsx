@@ -4,6 +4,7 @@ import {PageHeader,Badge,Empty} from '../components/Ui';
 import {DataTable} from '../components/DataTable';
 import {Modal} from '../components/Modal';
 import {MaskedInput} from '../components/MaskedInput';
+import {CepLookupInput} from '../components/CepLookupInput';
 import {apiMessage} from '../utils';
 
 const empty={legalName:'',tradeName:'',document:'',email:'',phone:'',financialContactName:'',financialContactDocument:'',financialContactEmail:'',financialContactPhone:'',zipCode:'',street:'',number:'',complement:'',district:'',city:'',state:'',status:'ACTIVE'};
@@ -46,7 +47,7 @@ export function SaasCommercialCustomers(){
     <label>CPF do responsável financeiro<MaskedInput mask="cpf" placeholder="000.000.000-00" value={form.financialContactDocument} onChange={financialContactDocument=>setForm({...form,financialContactDocument})}/></label>
     <label>E-mail financeiro<input type="email" value={form.financialContactEmail} onChange={e=>setForm({...form,financialContactEmail:e.target.value})}/></label>
     <label>Telefone financeiro<MaskedInput mask="phone" value={form.financialContactPhone} onChange={financialContactPhone=>setForm({...form,financialContactPhone})}/></label>
-    <label>CEP<MaskedInput mask="cep" value={form.zipCode} onChange={zipCode=>setForm({...form,zipCode})}/></label>
+    <label>CEP<CepLookupInput value={form.zipCode} onChange={zipCode=>setForm((current:any)=>({...current,zipCode}))} onAddressFound={address=>setForm((current:any)=>({...current,zipCode:address.zipCode,street:address.street,complement:address.complement,district:address.district,city:address.city,state:address.state,number:""}))}/></label>
     <label>Logradouro<input value={form.street} onChange={e=>setForm({...form,street:e.target.value})}/></label>
     <label>Número<input value={form.number} onChange={e=>setForm({...form,number:e.target.value})}/></label>
     <label>Complemento<input value={form.complement} onChange={e=>setForm({...form,complement:e.target.value})}/></label>

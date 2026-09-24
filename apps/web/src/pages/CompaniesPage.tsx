@@ -8,6 +8,7 @@ import {
 import { AsyncForm } from "../components/AsyncForm";
 import { DataTable } from "../components/DataTable";
 import { MaskedInput } from "../components/MaskedInput";
+import { CepLookupInput } from "../components/CepLookupInput";
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { Company } from "../types";
@@ -370,10 +371,23 @@ export function CompaniesPage({
             </div>
             <label>
               CEP
-              <MaskedInput
-                mask="cep"
+              <CepLookupInput
                 value={form.zipCode}
-                onChange={(zipCode) => setForm({ ...form, zipCode })}
+                onChange={(zipCode) => setForm((current: any) => ({ ...current, zipCode }))}
+                onAddressFound={(address) => setForm((current: any) => ({
+                  ...current,
+                  zipCode: address.zipCode,
+                  street: address.street,
+                  complement: address.complement,
+                  district: address.district,
+                  city: address.city,
+                  state: address.state,
+                  number: "",
+                  address: "",
+                  latitude: "",
+                  longitude: "",
+                  mapboxPlaceId: "",
+                }))}
               />
             </label>
             <label>

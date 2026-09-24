@@ -26,9 +26,16 @@ async function process(provider:PaymentProviderCode,input:{payload:any;eventKey?
 }
 
 export async function processCoraWebhook(payload:any,headers:Record<string,any>={}){
-  const resourceId=asString(headers["webhook-resource-id"]||payload?.resource_id||payload?.resourceId||payload?.data?.id||payload?.id);
-  const eventId=asString(headers["webhook-event-id"]||payload?.event_id||payload?.eventId);
-  return process("CORA",{payload,eventKey:eventId,providerChargeId:resourceId});
+  // A Cora envia as referências principais do webhook em headers e pode mandar corpo vazio.
+  // Persistimos uma cópia normalizada desses headers junto ao payload para que o worker
+  // consiga repetir a reconciliação sem perder o invoice id em uma falha transitória.
+  const persisted=payload&&typeof payload==="object"&&!Array.isArray(payload)?{...payload}:{};
+  const saved=persisted?._coraWebhook||{};
+  const resourceId=asString(headers["webhook-resource-id"]||saved.resourceId||payload?.resource_id||payload?.resourceId||payload?.data?.id||payload?.id);
+  const eventId=asString(headers["webhook-event-id"]||saved.eventId||payload?.event_id||payload?.eventId);
+  const eventType=asString(headers["webhook-event-type"]||saved.eventType||payload?.event_type||payload?.eventType);
+  const storedPayload={...persisted,_coraWebhook:{eventId,eventType,resourceId}};
+  return process("CORA",{payload:storedPayload,eventKey:eventId,providerChargeId:resourceId});
 }
 
 export async function processEfiWebhook(payload:any){
