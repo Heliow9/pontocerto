@@ -27,6 +27,12 @@ export type ProviderPayer = {
   zipCode?: string | null;
 };
 
+export type ProviderIssuePaymentTerms = {
+  discountAmount?: number | null;
+  fineAmount?: number | null;
+  interestRate?: number | null;
+};
+
 export type ProviderIssueInput = {
   externalReference: string;
   idempotencyKey: string;
@@ -35,6 +41,7 @@ export type ProviderIssueInput = {
   description: string;
   payer: ProviderPayer;
   paymentMethod: PaymentMethodCode;
+  paymentTerms?: ProviderIssuePaymentTerms | null;
 };
 
 export type ProviderIssueResult = {
@@ -60,6 +67,10 @@ export type ProviderChargeSnapshot = ProviderIssueResult & {
   receivedAmount?: number | null;
   providerFee?: number | null;
   netAmount?: number | null;
+  paidFine?: number | null;
+  paidInterest?: number | null;
+  configuredDiscountAmount?: number | null;
+  configuredDiscountPercent?: number | null;
 };
 
 export type ProviderLookupHint = {

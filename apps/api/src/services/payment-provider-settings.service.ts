@@ -2,18 +2,26 @@ import { pool } from "../db/pool.js";
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 import { assertProviderMethod, isPaymentMethodCode, isPaymentProviderCode, PROVIDER_LABELS } from "./payment-provider-core.js";
 import { getPaymentProvider, listPaymentProviders } from "./provider-registry.js";
-import type { PaymentMethodCode, PaymentProviderCode } from "./payment-provider.types.js";
+import type { PaymentMethodCode, PaymentProviderCode, ProviderIssuePaymentTerms } from "./payment-provider.types.js";
 
 const settingsError=(message:string,status=400,code="FINANCIAL_SETTINGS_ERROR")=>Object.assign(new Error(message),{status,code});
+
+export type CoraPaymentTermsSettings={discountAmount:number;fineAmount:number;interestRate:number};
+const DEFAULT_CORA_TERMS:CoraPaymentTermsSettings={discountAmount:0,fineAmount:0,interestRate:0};
+const money2=(value:unknown)=>Math.max(0,Math.round(Number(value||0)*100)/100);
+const percent2=(value:unknown)=>Math.min(100,Math.max(0,Math.round(Number(value||0)*100)/100));
+function readJson(value:unknown){try{return value?JSON.parse(String(value)):{};}catch{return{};}}
+function normalizeCoraTerms(value:any):CoraPaymentTermsSettings{return{discountAmount:money2(value?.discountAmount),fineAmount:money2(value?.fineAmount),interestRate:percent2(value?.interestRate)};}
+function coraTermsFromStored(value:unknown){const parsed=readJson(value);return normalizeCoraTerms(parsed?.paymentTerms||DEFAULT_CORA_TERMS);}
 
 export async function getFinancialProviderSettings(){
   const [rows]=await pool.query<any[]>("SELECT default_payment_provider,default_payment_method,updated_at FROM financial_settings WHERE id=1 LIMIT 1");
   const row=rows[0]||{};
-  const [dbRows]=await pool.query<any[]>("SELECT provider,is_default,enabled,environment,last_test_at,last_test_status,last_test_message FROM payment_provider_settings ORDER BY provider");
-  const db=new Map(dbRows.map(r=>[String(r.provider),r]));
+  const [dbRows]=await pool.query<any[]>("SELECT provider,is_default,enabled,environment,last_test_at,last_test_status,last_test_message,settings_json FROM payment_provider_settings ORDER BY provider");
+  const db=new Map<string,any>(dbRows.map((r:any)=>[String(r.provider),r]));
   const providers=listPaymentProviders().map(provider=>{
-    const status=provider.connectionStatus(); const stored=db.get(provider.code)||{};
-    return {...status,label:PROVIDER_LABELS[provider.code],selected:row.default_payment_provider===provider.code,dbEnabled:Boolean(stored.enabled),lastTestAt:stored.last_test_at||null,lastTestStatus:stored.last_test_status||"NEVER",lastTestMessage:stored.last_test_message||null};
+    const status=provider.connectionStatus(); const stored:any=db.get(provider.code)||{};
+    return {...status,label:PROVIDER_LABELS[provider.code],selected:row.default_payment_provider===provider.code,dbEnabled:Boolean(stored.enabled),lastTestAt:stored.last_test_at||null,lastTestStatus:stored.last_test_status||"NEVER",lastTestMessage:stored.last_test_message||null,paymentTerms:provider.code==="CORA"?coraTermsFromStored(stored.settings_json):null};
   });
   return {defaultProvider:isPaymentProviderCode(row.default_payment_provider)?row.default_payment_provider:null,defaultMethod:isPaymentMethodCode(row.default_payment_method)?row.default_payment_method:null,updatedAt:row.updated_at||null,providers};
 }
@@ -32,6 +40,22 @@ export async function updateFinancialProviderSettings(input:{provider:PaymentPro
     await conn.commit();
   }catch(e){await conn.rollback();throw e;}finally{conn.release();}
   return getFinancialProviderSettings();
+}
+
+export async function updateCoraPaymentTerms(input:CoraPaymentTermsSettings){
+  const terms=normalizeCoraTerms(input);
+  const [rows]=await pool.query<any[]>("SELECT settings_json FROM payment_provider_settings WHERE provider='CORA' LIMIT 1");
+  const settings=readJson(rows[0]?.settings_json);settings.paymentTerms=terms;
+  const payload=JSON.stringify(settings);
+  await pool.query(`INSERT INTO payment_provider_settings(provider,is_default,enabled,environment,last_test_status,settings_json,created_at,updated_at) VALUES('CORA',0,0,'production','NEVER',?,${BRASILIA_NOW_SQL},${BRASILIA_NOW_SQL}) ON DUPLICATE KEY UPDATE settings_json=VALUES(settings_json),updated_at=${BRASILIA_NOW_SQL}`,[payload]);
+  return terms;
+}
+
+export async function getProviderIssuePaymentTerms(code:PaymentProviderCode):Promise<ProviderIssuePaymentTerms|null>{
+  if(code!=="CORA")return null;
+  const [rows]=await pool.query<any[]>("SELECT settings_json FROM payment_provider_settings WHERE provider='CORA' LIMIT 1");
+  const terms=coraTermsFromStored(rows[0]?.settings_json);
+  return terms.discountAmount>0||terms.fineAmount>0||terms.interestRate>0?terms:null;
 }
 
 export async function getDefaultPaymentSelection(){

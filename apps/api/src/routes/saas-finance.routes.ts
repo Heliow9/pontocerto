@@ -7,7 +7,7 @@ import {
   listReceipts, reconcileCharge, recordManualPayment, updateBillingProfile,
 } from "../services/financial.service.js";
 import { getTenantFinancialAccess, grantFinancialException, listFinancialExceptions, revokeFinancialException } from "../services/financial-access.service.js";
-import { configurePaymentProviderWebhook, getFinancialProviderSettings, testPaymentProvider, updateFinancialProviderSettings } from "../services/payment-provider-settings.service.js";
+import { configurePaymentProviderWebhook, getFinancialProviderSettings, testPaymentProvider, updateCoraPaymentTerms, updateFinancialProviderSettings } from "../services/payment-provider-settings.service.js";
 import { exceptionEndFromPreset } from "../services/financial-access-core.js";
 import { writeAudit } from "../utils/audit.js";
 import { listChargeDeliveries, sendFinancialChargeEmail } from "../services/financial-email.service.js";
@@ -69,5 +69,6 @@ saasFinanceRouter.get("/reports/receipts.csv",safe(async(req,res)=>{
 
 saasFinanceRouter.get("/providers",safe(async(_req,res)=>res.json(await getFinancialProviderSettings())));
 saasFinanceRouter.put("/providers/default",safe(async(req,res)=>{const d=z.object({provider:providerSchema,method:methodSchema}).parse(req.body);const result=await updateFinancialProviderSettings(d,req.auth!.userId);await writeAudit(req,"UPDATE","financial_provider_default",null,undefined,d);res.json(result);}));
+saasFinanceRouter.put("/providers/CORA/payment-terms",safe(async(req,res)=>{const d=z.object({discountAmount:z.coerce.number().min(0).max(99999999),fineAmount:z.coerce.number().min(0).max(99999999),interestRate:z.coerce.number().min(0).max(100)}).parse(req.body);const result=await updateCoraPaymentTerms(d);await writeAudit(req,"UPDATE","cora_payment_terms",null,undefined,d);res.json(result);}));
 saasFinanceRouter.post("/providers/:provider/test",safe(async(req,res)=>{const provider=providerSchema.parse(String(req.params.provider).toUpperCase());const result=await testPaymentProvider(provider);await writeAudit(req,"PROVIDER_CONNECTION_TEST","saas_finance",null,undefined,{provider,ok:true});res.json(result);}));
 saasFinanceRouter.put("/providers/:provider/webhook",safe(async(req,res)=>{const provider=providerSchema.parse(String(req.params.provider).toUpperCase());const settings=await getFinancialProviderSettings();const current=settings.providers.find((x:any)=>x.code===provider);const d=z.object({url:z.string().url().optional()}).parse(req.body||{});const url=d.url||current?.webhookUrl;if(!url)throw Object.assign(new Error("Informe uma URL HTTPS de webhook no servidor ou na solicitação."),{status:400,code:"WEBHOOK_URL_MISSING"});const result=await configurePaymentProviderWebhook(provider,url);await writeAudit(req,"PROVIDER_WEBHOOK_CONFIGURED","saas_finance",null,undefined,{provider,url});res.json(result);}));
