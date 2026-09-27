@@ -4,6 +4,7 @@ import {BRASILIA_NOW_SQL} from '../utils/db-time.js';
 import {getProductSubscription} from './product-subscription.service.js';
 import {buildMovyoBillingPayload} from './product-integration-core.js';
 import {syncMovyoSubscription} from './movyo-client.service.js';
+import {syncPayhubSubscription} from './payhub-client.service.js';
 
 const json=(v:unknown)=>v==null?null:JSON.stringify(v);
 function syncKey(subscriptionId:number,payload:unknown){return `movyo:${subscriptionId}:${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0,40)}`;}
@@ -21,8 +22,17 @@ async function writeSyncLog(input:{subscriptionId:number;externalAccountId:strin
 
 export async function syncSubscriptionOperationalState(subscriptionId:number,reason='SYNC'){
   const s:any=await getProductSubscription(subscriptionId);
-  if(String(s.product_code).toUpperCase()!=='MOVYO')return{skipped:true,reason:'PRODUCT_NOT_MOVYO'};
+  const productCode=String(s.product_code).toUpperCase();
+  if(!['MOVYO','PAYHUB'].includes(productCode))return{skipped:true,reason:'PRODUCT_NOT_EXTERNAL'};
   if(!s.external_account_id)return{skipped:true,reason:'EXTERNAL_ACCOUNT_MISSING'};
+  if(productCode==='PAYHUB'){
+    let meta:any={};try{meta=typeof s.metadata_json==='string'?JSON.parse(s.metadata_json):s.metadata_json||{};}catch{}
+    const payload={subscriptionId:String(s.id),planCode:s.plan_code||null,maxEmployees:meta.maxEmployees??300,documentRetentionDays:meta.documentRetentionDays??60,status:String(s.status)==='BLOCKED'?'BLOCKED':'ACTIVE',blockReason:String(s.status)==='BLOCKED'?'Bloqueio financeiro pelo Ponto Certo SaaS':null};
+    const key=`payhub:${subscriptionId}:${createHash('sha256').update(JSON.stringify(payload)).digest('hex').slice(0,40)}`;
+    const response=await syncPayhubSubscription(String(s.external_account_id),payload,key);
+    await pool.query(`INSERT INTO product_sync_logs(product_subscription_id,product_code,external_account_id,action,status,idempotency_key,request_json,response_json,error_message,created_at) VALUES(?,'PAYHUB',?,?, 'SUCCESS',?,?,?,NULL,${BRASILIA_NOW_SQL}) ON DUPLICATE KEY UPDATE status='SUCCESS',response_json=VALUES(response_json),error_message=NULL`,[subscriptionId,String(s.external_account_id),reason,key,json(payload),json(response)]);
+    return{skipped:false,response,payload};
+  }
   const charge=await latestCharge(subscriptionId);
   const payload=buildMovyoBillingPayload({
     pontoCertoCustomerId:Number(s.commercial_customer_id),subscriptionId,status:String(s.status),planCode:s.plan_code||null,
