@@ -149,8 +149,20 @@ export async function enqueueControlIdCompanySync(tenantId: number, companyId: n
 }
 
 export async function claimControlIdPushJob(terminalId: number, uuidInput: unknown) {
-  const uuid = String(uuidInput || randomUUID()).slice(0, 80);
   const conn = await pool.getConnection();
+  try {
+    return await claimControlIdPushJobWithConnection(conn, terminalId, uuidInput);
+  } finally {
+    conn.release();
+  }
+}
+
+export async function claimControlIdPushJobWithConnection(
+  conn: any,
+  terminalId: number,
+  uuidInput: unknown,
+) {
+  const uuid = String(uuidInput || randomUUID()).slice(0, 80);
   try {
     await conn.beginTransaction();
     await conn.query(
@@ -165,8 +177,8 @@ export async function claimControlIdPushJob(terminalId: number, uuidInput: unkno
         WHERE j.terminal_id=? AND j.status IN ('PENDING','FAILED') AND j.projection_version<m.desired_version`,
       [terminalId],
     );
-    const [rows] = await conn.query<any[]>(
-      `SELECT j.id,j.job_type,j.payload_json FROM control_id_sync_jobs j
+    const [rows] = await conn.query(
+      `SELECT j.id FROM control_id_sync_jobs j
         WHERE j.terminal_id=? AND j.status IN ('PENDING','FAILED') AND j.available_at<=${BRASILIA_NOW_SQL}
           AND NOT EXISTS (
             SELECT 1 FROM control_id_sync_jobs prior
@@ -180,19 +192,25 @@ export async function claimControlIdPushJob(terminalId: number, uuidInput: unkno
       await conn.commit();
       return null;
     }
-    const row = rows[0];
+    const id = Number(rows[0].id);
+    const [payloadRows] = await conn.query(
+      `SELECT job_type,payload_json FROM control_id_sync_jobs
+        WHERE id=? AND terminal_id=? LIMIT 1`,
+      [id, terminalId],
+    );
+    const row = payloadRows[0];
+    if (!row) throw new Error("Job Control iD não encontrado após reserva.");
+    const payload = typeof row.payload_json === "string" ? JSON.parse(row.payload_json) : row.payload_json;
+    const command = buildControlIdPushCommand({ id, jobType: row.job_type, payload });
     await conn.query(
       `UPDATE control_id_sync_jobs SET status='CLAIMED',attempts=attempts+1,claimed_at=${BRASILIA_NOW_SQL},push_uuid=?,updated_at=${BRASILIA_NOW_SQL} WHERE id=?`,
-      [uuid, row.id],
+      [uuid, id],
     );
     await conn.commit();
-    const payload = typeof row.payload_json === "string" ? JSON.parse(row.payload_json) : row.payload_json;
-    return buildControlIdPushCommand({ id: Number(row.id), jobType: row.job_type, payload });
+    return command;
   } catch (error) {
     await conn.rollback();
     throw error;
-  } finally {
-    conn.release();
   }
 }
 
