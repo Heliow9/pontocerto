@@ -2,6 +2,7 @@ import { checkEmployeeCapacity } from "../services/entitlements.service.js";
 import { employeeEmailSuggestions, employeeEmailTaken } from "../services/employee-email.service.js";
 import { employeeImportRouter } from "./employee-import.routes.js";
 import { Router } from "express";
+import { enqueueControlIdEmployeeRemoval } from "../services/control-id-sync.service.js";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { pool } from "../db/pool.js";
@@ -369,6 +370,7 @@ employeesRouter.delete(
       [id, req.auth!.tenantId]
     );
     await writeAudit(req, "DEACTIVATE", "employee", id);
-    res.json({ ok: true });
+    const controlId = await enqueueControlIdEmployeeRemoval({ tenantId: req.auth!.tenantId, employeeId: id });
+    res.json({ ok: true, controlId });
   }
 );

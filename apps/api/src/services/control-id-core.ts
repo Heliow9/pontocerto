@@ -113,7 +113,7 @@ export function buildControlIdPushCommand(
       throw new Error("Cadastro Control iD incompleto.");
     return {
       verb: "POST",
-      endpoint: "create_objects",
+      endpoint: "create_or_modify_objects",
       body: { object: "users", values: [{ id, name, registration }] },
       contentType: "application/json",
     };
@@ -145,4 +145,18 @@ export function buildControlIdPushCommand(
     body: { object: "users", where: { users: { id } } },
     contentType: "application/json",
   };
+}
+
+export function controlIdResultDecision(args: {
+  currentStatus: string;
+  attempts: number;
+  error: string | null;
+}) {
+  if (args.currentStatus === "SUCCEEDED")
+    return { status: "SUCCEEDED" as const, retry: false };
+  if (!args.error)
+    return { status: "SUCCEEDED" as const, retry: false };
+  if (args.attempts >= 5)
+    return { status: "DEAD" as const, retry: false };
+  return { status: "FAILED" as const, retry: true };
 }

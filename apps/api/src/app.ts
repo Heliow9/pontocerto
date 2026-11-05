@@ -33,12 +33,15 @@ import { mailTrackingRouter } from "./routes/mail-tracking.routes.js";
 import { billingRouter } from "./routes/billing.routes.js";
 import { paymentWebhookRouter } from "./routes/payment-webhook.routes.js";
 import { postalCodeRouter } from "./routes/postal-code.routes.js";
+import { controlIdDeviceRouter, controlIdRouter } from "./routes/control-id.routes.js";
 
 export const app = express();
 app.use("/mail",mailTrackingRouter);
 app.use(cors({origin(origin,callback){const allowed=env.CORS_ORIGINS.split(",").map(x=>x.trim());if(!origin||allowed.includes(origin))return callback(null,true);callback(new Error("Origin não permitida pelo CORS."));},credentials:true}));
 app.use(express.json({limit:"3mb"}));
 app.use("/webhooks",paymentWebhookRouter);
+app.use("/",controlIdDeviceRouter);
+app.use("/control-id",controlIdRouter);
 app.use("/team",teamRouter);app.use("/audit",auditRouter);
 app.use("/automation",automationRouter);
 app.use("/logs",logsRouter);

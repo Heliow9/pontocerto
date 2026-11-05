@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildControlIdPushCommand,
+  controlIdResultDecision,
   hashControlIdSecret,
   normalizeControlIdSerial,
   parseControlIdDao,
@@ -85,7 +86,7 @@ test("builds the user, face and removal commands executed by Push", () => {
     }),
     {
       verb: "POST",
-      endpoint: "create_objects",
+      endpoint: "create_or_modify_objects",
       body: {
         object: "users",
         values: [{ id: 42, name: "Ana Lima", registration: "MAT-42" }],
@@ -120,4 +121,23 @@ test("builds the user, face and removal commands executed by Push", () => {
       contentType: "application/json",
     },
   );
+});
+
+test("retries transient Push failures without regressing successful results", () => {
+  assert.deepEqual(controlIdResultDecision({ currentStatus: "CLAIMED", attempts: 1, error: "timeout" }), {
+    status: "FAILED",
+    retry: true,
+  });
+  assert.deepEqual(controlIdResultDecision({ currentStatus: "CLAIMED", attempts: 5, error: "invalid image" }), {
+    status: "DEAD",
+    retry: false,
+  });
+  assert.deepEqual(controlIdResultDecision({ currentStatus: "CLAIMED", attempts: 1, error: null }), {
+    status: "SUCCEEDED",
+    retry: false,
+  });
+  assert.deepEqual(controlIdResultDecision({ currentStatus: "SUCCEEDED", attempts: 1, error: "late duplicate" }), {
+    status: "SUCCEEDED",
+    retry: false,
+  });
 });

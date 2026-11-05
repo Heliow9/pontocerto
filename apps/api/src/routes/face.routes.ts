@@ -11,6 +11,7 @@ import {
 import { BRASILIA_NOW_SQL } from "../utils/db-time.js";
 import { writeAudit } from "../utils/audit.js";
 import { indexEmployeeFace, removeEmployeeFaceIndex } from "../services/face-collection.service.js";
+import { enqueueControlIdEmployeeRemoval, enqueueControlIdEmployeeSync } from "../services/control-id-sync.service.js";
 
 export const faceRouter = Router();
 faceRouter.use(authMiddleware, requireRole("TENANT_ADMIN", "RH"));
@@ -115,9 +116,15 @@ faceRouter.post(
     await writeAudit(req, "FACE_PHOTO_SAVE", "employee", e.id, undefined, {
       enrolled: true,
     });
+    const controlId = await enqueueControlIdEmployeeSync({
+      tenantId: req.auth!.tenantId,
+      companyId: Number(e.company_id),
+      employeeId: Number(e.id),
+    });
     res.json({
       ok: true,
       enrolled: true,
+      controlId,
       message:
         "Foto salva. As próximas marcações serão comparadas com esta imagem.",
     });
@@ -140,9 +147,15 @@ faceRouter.delete("/employee/:id/photo", async (req, res) => {
   await writeAudit(req, "FACE_PHOTO_REMOVE", "employee", e.id, undefined, {
     enrolled: false,
   });
+  const controlId = await enqueueControlIdEmployeeRemoval({
+    tenantId: req.auth!.tenantId,
+    employeeId: Number(e.id),
+    faceOnly: true,
+  });
   res.json({
     ok: true,
     enrolled: false,
+    controlId,
     message:
       "Foto removida. O funcionário volta ao fluxo de ponto sem comparação facial.",
   });

@@ -40,7 +40,7 @@
 **Interfaces:**
 - Produces: `hashControlIdSecret(secret, pepper)`, `readBearerToken(header)`, `normalizeControlIdSerial(value)`, `parseControlIdDao(body)`, `buildControlIdPushCommand(job)` and protocol types.
 
-- [x] Escrever testes falhando para token Bearer, serial, parsing de lotes DAO e comandos `create_objects`, `user_set_image` e `destroy_objects`.
+- [x] Escrever testes falhando para token Bearer, serial, parsing de lotes DAO e comandos `create_or_modify_objects`, `user_set_image` e `destroy_objects`.
 - [x] Executar o teste isolado e confirmar falha por módulo ausente.
 - [x] Implementar o adaptador mínimo e a migração com terminais, mapeamentos, jobs, eventos e colunas `CONTROL_ID` em `time_entries`.
 - [x] Reexecutar o teste e confirmar aprovação.
@@ -57,10 +57,10 @@
 - Consumes: helpers da Task 1.
 - Produces: rotas administrativas `GET /control-id/admin/companies/:companyId`, `POST /control-id/admin/terminals`, `POST /control-id/admin/terminals/:id/rotate`, `PATCH /control-id/admin/terminals/:id`; função `resolveControlIdTerminal`.
 
-- [ ] Escrever testes falhando para criação limitada a uma empresa do tenant, segredo retornado uma vez e resolução token/deviceId.
-- [ ] Confirmar a falha específica.
-- [ ] Implementar serviço e rotas com `TENANT_ADMIN` para mutações e `RH` para leitura.
-- [ ] Confirmar testes e build da API.
+- [x] Escrever testes falhando para criação limitada a uma empresa do tenant, segredo retornado uma vez e resolução token/deviceId.
+- [x] Confirmar a falha específica.
+- [x] Implementar serviço e rotas com `TENANT_ADMIN` para mutações e `RH` para leitura.
+- [x] Confirmar testes e build da API.
 
 ### Task 3: Fila facial e endpoints Push/Result
 
@@ -74,10 +74,10 @@
 **Interfaces:**
 - Produces: `enqueueControlIdEmployeeSync`, `claimControlIdPushJob`, `completeControlIdPushJob`; rotas públicas `GET /control-id/push` e `POST /control-id/result`.
 
-- [ ] Escrever testes falhando para ordem usuário→foto, deduplicação por versão, remoção e resultado repetido.
-- [ ] Confirmar falhas.
-- [ ] Implementar fila e hooks após salvar/remover foto e desativar/transferir funcionário.
-- [ ] Confirmar testes e build.
+- [x] Escrever testes falhando para ordem usuário→foto, deduplicação por versão, remoção e resultado repetido.
+- [x] Confirmar falhas.
+- [x] Implementar fila e hooks após salvar/remover foto e desativar funcionário.
+- [x] Confirmar testes e build.
 
 ### Task 4: Monitor e batida idempotente
 
@@ -89,10 +89,10 @@
 **Interfaces:**
 - Produces: `receiveControlIdDao`, `processControlIdEvent`; rotas `POST /control-id/monitor/dao` e `POST /control-id/monitor/device_is_alive`.
 
-- [ ] Escrever testes falhando para evento facial autorizado, duplicidade, usuário cruzado e marcação fora de janela.
-- [ ] Confirmar falhas.
-- [ ] Implementar inbox idempotente, resolução histórica do mapeamento e inserção `CONTROL_ID` sob lock lógico.
-- [ ] Confirmar testes e build.
+- [x] Escrever testes falhando para evento facial autorizado, duplicidade, usuário cruzado e marcação fora de janela.
+- [x] Confirmar falhas.
+- [x] Implementar inbox idempotente, resolução histórica do mapeamento e inserção `CONTROL_ID` sob lock lógico.
+- [x] Confirmar testes e build.
 
 ### Task 5: Página Equipamentos
 
@@ -106,10 +106,10 @@
 - Consumes: API administrativa das Tasks 2–4.
 - Produces: navegação `Equipamentos`, seleção de empresa, criação, token exibido uma vez, URLs de configuração, saúde e contadores de sincronização.
 
-- [ ] Escrever teste de UI falhando para navegação e estados operacionais.
-- [ ] Confirmar falha.
-- [ ] Implementar a página seguindo os componentes e CSS existentes.
-- [ ] Confirmar teste e build Web.
+- [x] Escrever teste de UI falhando para navegação e estados operacionais.
+- [x] Confirmar falha.
+- [x] Implementar a página seguindo os componentes e CSS existentes.
+- [x] Confirmar teste e build Web.
 
 ### Task 6: Verificação e runbook de teste físico
 
@@ -120,8 +120,8 @@
 **Interfaces:**
 - Produces: instruções exatas para migrar, criar terminal, configurar Modo Ponto/Push/Monitor e verificar uma batida.
 
-- [ ] Executar testes Control iD individualmente.
-- [ ] Executar `npm run build --workspace apps/api` e `npm run build --workspace apps/web`.
-- [ ] Executar a suíte completa com heap ampliado e registrar falhas preexistentes versus novas.
-- [ ] Conferir `git diff --check` e documentar variáveis/URLs sem expor segredo real.
+- [x] Executar testes Control iD individualmente.
+- [x] Executar `npm run build --workspace apps/api` e `npm run build --workspace apps/web`.
+- [x] Executar a suíte completa com heap ampliado e registrar falhas preexistentes versus novas.
+- [x] Conferir `git diff --check` e documentar variáveis/URLs sem expor segredo real.
 

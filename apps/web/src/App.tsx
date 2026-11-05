@@ -30,6 +30,7 @@ type Page =
   | "saas"
   | "adjustments"
   | "autopoint"
+  | "controlid"
   | "password";
 const loaders = {
   team: () => import("./pages/TeamPage").then(m=>({default:m.TeamPage})),
@@ -63,6 +64,8 @@ const loaders = {
     })),
   autopoint: () =>
     import("./pages/AutoPointPage").then((m) => ({ default: m.AutoPointPage })),
+  controlid: () =>
+    import("./pages/ControlIdPage").then((m) => ({ default: m.ControlIdPage })),
 };
 const TeamPage = lazy(loaders.team), AuditPage = lazy(loaders.audit), PasswordPage = lazy(loaders.password),
   DashboardPage = lazy(loaders.dashboard),
@@ -76,6 +79,7 @@ const TeamPage = lazy(loaders.team), AuditPage = lazy(loaders.audit), PasswordPa
   SettingsPage = lazy(loaders.settings),
   SaasPage = lazy(loaders.saas),
   AutoPointPage = lazy(loaders.autopoint),
+  ControlIdPage = lazy(loaders.controlid),
   AdjustmentsPage = lazy(loaders.adjustments);
 function preload(page: Page) {
   void loaders[page]().catch(() => {});
@@ -90,6 +94,7 @@ const nav: { id: Page; label: string; group: string }[] = [
   { id: "occurrences", label: "Ocorrências", group: "Operação" },
   { id: "reports", label: "Relatórios", group: "Operação" },
   { id: "autopoint", label: "AutoPonto", group: "Operação" },
+  { id: "controlid", label: "Equipamentos Control iD", group: "Cadastros" },
   { id: "employees", label: "Funcionários", group: "Cadastros" },
   { id: "schedules", label: "Escalas e jornadas", group: "Cadastros" },
   { id: "locations", label: "Locais de trabalho", group: "Cadastros" },
@@ -186,6 +191,7 @@ export function App() {
       (n.id !== "saas" || user?.role === "SUPER_ADMIN") &&
       (n.id !== "settings" || canAdmin) &&
       (n.id !== "autopoint" || user?.role === "TENANT_ADMIN") &&
+      (n.id !== "controlid" || ["TENANT_ADMIN", "RH"].includes(user?.role)) &&
       (n.id !== "team" || user?.role === "TENANT_ADMIN") &&
       (n.id !== "audit" || ["TENANT_ADMIN","RH","SUPERVISOR"].includes(user?.role)) &&
       (user?.role !== "SUPERVISOR" || n.id === "password" || ["read","write"].includes(user?.permissions?.[n.id === "audit" ? "audit" : n.id] || "none")),
@@ -359,6 +365,7 @@ export function App() {
     reports: <ReportsPage notify={notify} />,
     settings: <SettingsPage notify={notify} />,
     autopoint: <AutoPointPage notify={notify} />,
+    controlid: <ControlIdPage notify={notify} />,
     saas: <SaasPage notify={notify} />,
     adjustments: <AdjustmentsPage notify={notify} />,
   };
