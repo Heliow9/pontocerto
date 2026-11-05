@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   buildControlIdPushCommand,
   controlIdResultDecision,
+  controlIdResultError,
+  controlIdIsFacialAccess,
   hashControlIdSecret,
   normalizeControlIdSerial,
   parseControlIdDao,
@@ -140,4 +142,23 @@ test("retries transient Push failures without regressing successful results", ()
     status: "SUCCEEDED",
     retry: false,
   });
+});
+
+test("treats a rejected facial enrollment response as a Push failure", () => {
+  assert.equal(
+    controlIdResultError(
+      { success: false, errors: [{ code: 8, message: "Low sharpness" }] },
+      null,
+    ),
+    "Low sharpness",
+  );
+  assert.equal(controlIdResultError({ success: true }, null), null);
+  assert.equal(controlIdResultError({}, "timeout"), "timeout");
+});
+
+test("accepts facial evidence and rejects explicit card, PIN or QR evidence", () => {
+  assert.equal(controlIdIsFacialAccess({ confidence: 1230, card_value: "0" }), true);
+  assert.equal(controlIdIsFacialAccess({ confidence: 0, card_value: "123" }), false);
+  assert.equal(controlIdIsFacialAccess({ pin_value: "1234" }), false);
+  assert.equal(controlIdIsFacialAccess({ qrcode_value: "ABC" }), false);
 });

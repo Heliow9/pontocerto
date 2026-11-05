@@ -22,8 +22,10 @@ type Terminal = {
 
 export function ControlIdPage({
   notify,
+  role,
 }: {
   notify: (message: string, type?: "ok" | "error") => void;
+  role?: string;
 }) {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState("");
@@ -132,6 +134,20 @@ export function ControlIdPage({
     }
   }
 
+  async function enableTerminal() {
+    if (!terminal || busy) return;
+    setBusy(true);
+    try {
+      await api.patch(`/control-id/admin/terminals/${terminal.id}`, { active: true });
+      notify("Equipamento reativado. Sincronize os funcionários e confirme a credencial configurada.");
+      await loadTerminal();
+    } catch (error) {
+      notify(apiMessage(error), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -167,7 +183,7 @@ export function ControlIdPage({
       )}
 
       {!terminal && !loading ? (
-        <form className="panel form-grid" onSubmit={createTerminal}>
+        role === "TENANT_ADMIN" ? <form className="panel form-grid" onSubmit={createTerminal}>
           <div className="section-label span-2">Cadastrar iDFace de {company?.trade_name || company?.legal_name}</div>
           <label>
             Nome/local
@@ -187,7 +203,7 @@ export function ControlIdPage({
           <div className="form-actions span-2">
             <button className="primary" disabled={busy || !companyId}>{busy ? "Criando…" : "Criar equipamento"}</button>
           </div>
-        </form>
+        </form> : <section className="panel">Nenhum equipamento Control iD cadastrado para esta empresa.</section>
       ) : terminal ? (
         <>
           <section className="panel">
@@ -197,11 +213,19 @@ export function ControlIdPage({
                 <h2>{terminal.name}</h2>
                 <p>Série {terminal.serial_number} · Device ID {terminal.vendor_device_id}</p>
               </div>
-              <div className="form-actions">
-                <button className="secondary" disabled={busy || !terminal.active} onClick={syncEmployees}>Sincronizar funcionários</button>
-                <button className="secondary" disabled={busy || !terminal.active} onClick={rotateCredential}>Trocar credencial</button>
-                <button className="danger" disabled={busy || !terminal.active} onClick={disableTerminal}>Desativar</button>
-              </div>
+              {role === "TENANT_ADMIN" && (
+                <div className="form-actions">
+                  {terminal.active ? (
+                    <>
+                      <button className="secondary" disabled={busy} onClick={syncEmployees}>Sincronizar funcionários</button>
+                      <button className="secondary" disabled={busy} onClick={rotateCredential}>Trocar credencial</button>
+                      <button className="danger" disabled={busy} onClick={disableTerminal}>Desativar</button>
+                    </>
+                  ) : (
+                    <button className="primary" disabled={busy} onClick={enableTerminal}>Reativar equipamento</button>
+                  )}
+                </div>
+              )}
             </div>
             <div className="dashboard-kpis">
               <div className="kpi"><strong>{terminal.synced}</strong><span>sincronizados</span></div>

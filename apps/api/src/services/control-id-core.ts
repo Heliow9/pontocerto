@@ -160,3 +160,44 @@ export function controlIdResultDecision(args: {
     return { status: "DEAD" as const, retry: false };
   return { status: "FAILED" as const, retry: true };
 }
+
+export function controlIdResultError(response: unknown, outerError: unknown) {
+  if (outerError != null && outerError !== "") return String(outerError).slice(0, 1000);
+  let parsed = response;
+  if (typeof parsed === "string") {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return null;
+    }
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const result = parsed as Record<string, unknown>;
+  if (result.success !== false) return null;
+  if (Array.isArray(result.errors)) {
+    const messages = result.errors
+      .map((item) =>
+        item && typeof item === "object"
+          ? String((item as Record<string, unknown>).message ?? (item as Record<string, unknown>).code ?? "")
+          : String(item ?? ""),
+      )
+      .filter(Boolean);
+    if (messages.length) return messages.join("; ").slice(0, 1000);
+  }
+  return "O equipamento rejeitou o comando facial.";
+}
+
+export function controlIdIsFacialAccess(values: Record<string, unknown>) {
+  const populated = (value: unknown) => {
+    const text = String(value ?? "").trim();
+    return text !== "" && text !== "0";
+  };
+  if (
+    populated(values.card_value) ||
+    populated(values.pin_value) ||
+    populated(values.qrcode_value) ||
+    populated(values.uhf_tag)
+  )
+    return false;
+  return Number(values.confidence ?? 0) > 0;
+}

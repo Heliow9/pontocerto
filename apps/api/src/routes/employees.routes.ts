@@ -2,7 +2,7 @@ import { checkEmployeeCapacity } from "../services/entitlements.service.js";
 import { employeeEmailSuggestions, employeeEmailTaken } from "../services/employee-email.service.js";
 import { employeeImportRouter } from "./employee-import.routes.js";
 import { Router } from "express";
-import { enqueueControlIdEmployeeRemoval } from "../services/control-id-sync.service.js";
+import { enqueueControlIdEmployeeRemoval, enqueueControlIdEmployeeSync } from "../services/control-id-sync.service.js";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { pool } from "../db/pool.js";
@@ -273,7 +273,24 @@ employeesRouter.put(
       }
       await conn.commit();
       await writeAudit(req, "UPDATE", "employee", id, beforeRows[0], { ...e, accessPassword: e.accessPassword ? "***" : null });
-      res.json({ ok: true });
+      const companyChanged = Number(beforeRows[0].company_id) !== e.companyId;
+      const identityChanged =
+        String(beforeRows[0].name) !== e.name ||
+        String(beforeRows[0].registration_number || "") !== String(e.registrationNumber || "");
+      let controlIdRemoval = null;
+      let controlIdSync = null;
+      if (Boolean(beforeRows[0].active) && (!e.active || companyChanged))
+        controlIdRemoval = await enqueueControlIdEmployeeRemoval({
+          tenantId: req.auth!.tenantId,
+          employeeId: id,
+        }).catch(() => ({ queued: false, reason: "SYNC_ERROR" }));
+      if (e.active && (companyChanged || identityChanged || !Boolean(beforeRows[0].active)))
+        controlIdSync = await enqueueControlIdEmployeeSync({
+          tenantId: req.auth!.tenantId,
+          companyId: e.companyId,
+          employeeId: id,
+        }).catch(() => ({ queued: false, reason: "SYNC_ERROR" }));
+      res.json({ ok: true, controlId: { removal: controlIdRemoval, sync: controlIdSync } });
     } catch (error: any) {
       await conn.rollback();
       if (error.emailConflict || (error?.code === "ER_DUP_ENTRY" && e.accessEmail && await employeeEmailTaken(e.accessEmail, req.auth!.tenantId, id, conn))) {

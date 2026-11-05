@@ -20,7 +20,7 @@ import {
   completeControlIdPushJob,
   enqueueControlIdCompanySync,
 } from "../services/control-id-sync.service.js";
-import { receiveControlIdDao } from "../services/control-id-punch.service.js";
+import { receiveControlIdDao, retryControlIdPendingEvents } from "../services/control-id-punch.service.js";
 
 export const controlIdRouter = Router();
 export const controlIdDeviceRouter = Router();
@@ -123,7 +123,14 @@ admin.get(
     const company = await mysqlControlIdTerminalStore.findCompany(req.auth!.tenantId, companyId);
     if (!company) return res.status(404).json({ message: "Empresa não encontrada." });
     const [rows] = await pool.query<any[]>(
-      `SELECT t.id,t.name,t.serial_number,t.vendor_device_id,t.model,t.firmware_version,t.active,t.status,
+      `SELECT t.id,t.name,t.serial_number,t.vendor_device_id,t.model,t.firmware_version,t.active,
+              CASE
+                WHEN t.active=0 THEN 'DISABLED'
+                WHEN t.last_push_at IS NULL AND t.last_monitor_at IS NULL THEN t.status
+                WHEN COALESCE(t.last_push_at,'1970-01-01')<DATE_SUB(${BRASILIA_NOW_SQL},INTERVAL 2 MINUTE)
+                 AND COALESCE(t.last_monitor_at,'1970-01-01')<DATE_SUB(${BRASILIA_NOW_SQL},INTERVAL 2 MINUTE) THEN 'OFFLINE'
+                ELSE t.status
+              END AS status,
               t.last_push_at,t.last_monitor_at,t.last_event_at,t.created_at,
               SUM(m.sync_status='SYNCED') AS synced,
               SUM(m.sync_status='PENDING') AS pending,
@@ -270,7 +277,8 @@ controlIdDeviceRouter.post(
 controlIdDeviceRouter.post(
   "/control-id/monitor/device_is_alive",
   safe(async (req, res) => {
-    await publicTerminal(req, "MONITOR", req.body?.device_id);
+    const terminal = await publicTerminal(req, "MONITOR", req.body?.device_id);
+    await retryControlIdPendingEvents(terminal.id);
     res.status(200).send();
   }),
 );

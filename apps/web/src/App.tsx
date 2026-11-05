@@ -365,7 +365,7 @@ export function App() {
     reports: <ReportsPage notify={notify} />,
     settings: <SettingsPage notify={notify} />,
     autopoint: <AutoPointPage notify={notify} />,
-    controlid: <ControlIdPage notify={notify} />,
+    controlid: <ControlIdPage notify={notify} role={user?.role} />,
     saas: <SaasPage notify={notify} />,
     adjustments: <AdjustmentsPage notify={notify} />,
   };
