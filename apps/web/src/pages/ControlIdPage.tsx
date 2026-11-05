@@ -21,6 +21,28 @@ type Terminal = {
   quarantined: number;
 };
 
+type EmployeeDiagnostic = {
+  employeeId: number;
+  name: string;
+  registration?: string | null;
+  status: "READY" | "PROCESSING" | "SYNCED" | "ACTION_REQUIRED" | "REMOVING";
+  code: string;
+  stage: string;
+  summary: string;
+  technicalMessage?: string | null;
+  action: string;
+  attempts: number;
+  updatedAt?: string | null;
+};
+
+const diagnosticLabels: Record<EmployeeDiagnostic["status"], string> = {
+  READY: "Pronto",
+  PROCESSING: "Processando",
+  SYNCED: "Sincronizado",
+  ACTION_REQUIRED: "Ação necessária",
+  REMOVING: "Removendo",
+};
+
 export function ControlIdPage({
   notify,
   role,
@@ -31,10 +53,13 @@ export function ControlIdPage({
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState("");
   const [terminal, setTerminal] = useState<Terminal | null>(null);
+  const [diagnostics, setDiagnostics] = useState<EmployeeDiagnostic[]>([]);
   const [form, setForm] = useState({ name: "Recepção", serialNumber: "", vendorDeviceId: "" });
   const [credential, setCredential] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const company = useMemo(
     () => companies.find((item) => String(item.id) === companyId),
@@ -66,6 +91,8 @@ export function ControlIdPage({
     if (!id) return;
     const { data } = await api.get(`/control-id/admin/companies/${id}`);
     setTerminal(data.terminal || null);
+    setDiagnostics(data.diagnostics || []);
+    setLastRefresh(new Date());
   }
 
   useEffect(() => {
@@ -76,12 +103,47 @@ export function ControlIdPage({
 
   useEffect(() => {
     if (!companyId) return;
+    let mounted = true;
+    let running = false;
     setLoading(true);
     setCredential(null);
-    loadTerminal(companyId)
-      .catch((error) => notify(apiMessage(error), "error"))
-      .finally(() => setLoading(false));
+    const refresh = async (reportError: boolean) => {
+      if (running) return;
+      running = true;
+      try {
+        const { data } = await api.get(`/control-id/admin/companies/${companyId}`);
+        if (!mounted) return;
+        setTerminal(data.terminal || null);
+        setDiagnostics(data.diagnostics || []);
+        setLastRefresh(new Date());
+      } catch (error) {
+        if (mounted && reportError) notify(apiMessage(error), "error");
+      } finally {
+        running = false;
+        if (mounted) setLoading(false);
+      }
+    };
+    void refresh(true);
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh(false);
+    }, 5000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
   }, [companyId]);
+
+  async function refreshNow() {
+    if (!companyId || refreshing) return;
+    setRefreshing(true);
+    try {
+      await loadTerminal(companyId);
+    } catch (error) {
+      notify(apiMessage(error), "error");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   async function createTerminal(event: React.FormEvent) {
     event.preventDefault();
@@ -258,6 +320,57 @@ export function ControlIdPage({
             <div className="info-box">
               Push: {terminal.last_push_at ? brDateTime(terminal.last_push_at) : "aguardando"} · Monitor: {terminal.last_monitor_at ? brDateTime(terminal.last_monitor_at) : "aguardando"} · Última marcação: {terminal.last_event_at ? brDateTime(terminal.last_event_at) : "nenhuma"}
             </div>
+          </section>
+          <section className="panel" aria-live="polite">
+            <div className="autopoint-section-head">
+              <div>
+                <span className="eyebrow">DIAGNÓSTICO DA SINCRONIZAÇÃO</span>
+                <h2>Situação por funcionário</h2>
+                <p>Atualização automática a cada 5 segundos{lastRefresh ? ` · última consulta ${lastRefresh.toLocaleTimeString("pt-BR")}` : ""}.</p>
+              </div>
+              <button className="secondary" disabled={refreshing} onClick={refreshNow}>
+                {refreshing ? "Atualizando…" : "Atualizar agora"}
+              </button>
+            </div>
+            {diagnostics.length ? (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Funcionário</th>
+                      <th>Situação</th>
+                      <th>Etapa</th>
+                      <th>Diagnóstico e correção</th>
+                      <th>Tentativas</th>
+                      <th>Atualizado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diagnostics.map((item) => (
+                      <tr key={item.employeeId}>
+                        <td><strong>{item.name}</strong><br /><small>Matrícula {item.registration || item.employeeId}</small></td>
+                        <td><strong>{diagnosticLabels[item.status]}</strong><br /><small>{item.code}</small></td>
+                        <td>{item.stage}</td>
+                        <td>
+                          <strong>{item.summary}</strong>
+                          <p>{item.action}</p>
+                          {item.technicalMessage && (
+                            <details>
+                              <summary>Detalhe técnico informado pelo iDFace</summary>
+                              <code style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{item.technicalMessage}</code>
+                            </details>
+                          )}
+                        </td>
+                        <td>{item.attempts}</td>
+                        <td>{item.updatedAt ? brDateTime(item.updatedAt) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="info-box">Nenhum funcionário cadastrado nesta empresa. Cadastre um funcionário ativo e salve a foto facial.</div>
+            )}
           </section>
           <section className="panel">
             <div className="section-label">Configuração no iDFace</div>

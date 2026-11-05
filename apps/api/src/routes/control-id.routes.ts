@@ -20,6 +20,7 @@ import {
   completeControlIdPushJob,
   enqueueControlIdCompanySync,
 } from "../services/control-id-sync.service.js";
+import { buildControlIdEmployeeDiagnostic } from "../services/control-id-diagnostics.js";
 import { receiveControlIdDao, retryControlIdPendingEvents } from "../services/control-id-punch.service.js";
 
 export const controlIdRouter = Router();
@@ -152,7 +153,48 @@ admin.get(
           quarantined: Number(rows[0].quarantined || 0),
         }
       : null;
-    res.json({ company, terminal });
+    let diagnostics: ReturnType<typeof buildControlIdEmployeeDiagnostic>[] = [];
+    if (terminal) {
+      const [employees] = await pool.query<any[]>(
+        `SELECT e.id,e.name,e.registration_number,e.active,e.updated_at AS employee_updated_at,
+                (f.employee_id IS NOT NULL) AS has_face,
+                m.sync_status,m.last_error_code,m.last_error_message,m.updated_at AS mapping_updated_at,
+                j.job_type,j.status AS job_status,j.attempts,j.last_error AS job_error,j.updated_at AS job_updated_at
+           FROM employees e
+           LEFT JOIN employee_face_images f ON f.tenant_id=e.tenant_id AND f.employee_id=e.id
+           LEFT JOIN control_id_employee_mappings m
+             ON m.tenant_id=e.tenant_id AND m.company_id=e.company_id AND m.employee_id=e.id AND m.terminal_id=?
+           LEFT JOIN (
+             SELECT terminal_id,employee_id,projection_version,MAX(id) AS job_id
+               FROM control_id_sync_jobs WHERE terminal_id=?
+              GROUP BY terminal_id,employee_id,projection_version
+           ) latest_job
+             ON latest_job.terminal_id=m.terminal_id AND latest_job.employee_id=m.employee_id
+            AND latest_job.projection_version=m.desired_version
+           LEFT JOIN control_id_sync_jobs j ON j.id=latest_job.job_id
+          WHERE e.tenant_id=? AND e.company_id=?
+          ORDER BY e.active DESC,e.name,e.id`,
+        [terminal.id, terminal.id, req.auth!.tenantId, companyId],
+      );
+      diagnostics = employees.map((row) =>
+        buildControlIdEmployeeDiagnostic({
+          employeeId: Number(row.id),
+          name: String(row.name),
+          registration: row.registration_number == null ? null : String(row.registration_number),
+          active: Boolean(row.active),
+          hasFace: Boolean(row.has_face),
+          mappingStatus: row.sync_status || null,
+          jobType: row.job_type || null,
+          jobStatus: row.job_status || null,
+          attempts: Number(row.attempts || 0),
+          lastErrorCode: row.last_error_code || null,
+          lastErrorMessage: row.last_error_message || null,
+          jobError: row.job_error || null,
+          updatedAt: row.job_updated_at || row.mapping_updated_at || row.employee_updated_at || null,
+        }),
+      );
+    }
+    res.json({ company, terminal, diagnostics });
   }),
 );
 
