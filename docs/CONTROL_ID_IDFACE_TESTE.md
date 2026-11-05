@@ -61,7 +61,7 @@ Firmwares que oferecem Bearer Token podem continuar usando os endpoints nativos 
 
 O equipamento acrescentará `/dao` e `/device_is_alive` ao caminho configurado.
 
-Se houver Nginx ou outro proxy, encaminhe todo o prefixo público da API para o Node, preserve `Authorization` e `Content-Type` e não registre os segmentos secretos das URLs.
+Se houver Nginx, instale o bloco de `deploy/nginx/ponto-certo-control-id-secret.conf.example` antes do `location /api/` genérico. Ele desativa o access log somente para as URLs secretas e mantém o restante do tráfego registrado. O deploy interrompe se essa proteção estiver ausente. Em outro proxy, aplique proteção equivalente.
 
 ## 5. Sincronizar um funcionário
 
@@ -85,12 +85,12 @@ Uma repetição do mesmo `access_log.id` não deve criar outra marcação. A seq
 
 ## Diagnóstico rápido
 
-- **401:** token ausente, digitado incorretamente ou rotacionado.
+- **401:** URL secreta incompleta, credencial rotacionada ou, no modo alternativo, Bearer ausente/incorreto.
 - **403:** `deviceId` enviado não coincide com o cadastrado.
 - **Pendente:** o equipamento ainda não consultou o Push ou não devolveu `/result`.
 - **Erro de foto:** cadastre uma foto mais frontal/nítida e sincronize novamente.
 - **Quarentena:** usuário externo desconhecido, cadastro removido ou evento recebido fora de ordem.
-- **Sem eventos:** confira o path do Monitor e se o proxy preserva `Authorization`.
+- **Sem eventos:** confira se o caminho secreto completo do Monitor foi copiado; no modo alternativo por Bearer, confirme também o header `Authorization`.
 
 ## Simular o Push sem o equipamento
 

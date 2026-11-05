@@ -17,6 +17,10 @@ export function buildControlIdDeviceUrls(
   }
 
   const base = new URL(apiBase, origin);
+  const localDevelopment = ["localhost", "127.0.0.1", "::1"].includes(base.hostname);
+  if (base.protocol !== "https:" && !localDevelopment) {
+    throw new Error("A URL secreta do equipamento exige HTTPS.");
+  }
   base.pathname = `${base.pathname.replace(/\/+$/, "")}/control-id/device/${credential.toLowerCase()}`;
   base.search = "";
   base.hash = "";

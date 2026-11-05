@@ -24,4 +24,12 @@ describe("Control iD device URLs", () => {
     expect(() => buildControlIdDeviceUrls("/api", "short", "https://example.test"))
       .toThrow(/credencial/i);
   });
+
+  it("refuses to expose a production secret URL over HTTP", () => {
+    expect(() => buildControlIdDeviceUrls(
+      "http://pontoocerto.duckdns.org/api",
+      "ab".repeat(32),
+      "http://pontoocerto.duckdns.org",
+    )).toThrow(/HTTPS/i);
+  });
 });

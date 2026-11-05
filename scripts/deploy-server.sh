@@ -2,6 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 sudo nginx -t
+sudo nginx -T 2>&1 | node scripts/nginx-control-id-secret-check.mjs
 PWA_DOMAIN="${PWA_DOMAIN:-hubpontocerto.duckdns.org}"
 PWA_ROOT="$(sudo nginx -T 2>/dev/null | node scripts/nginx-pwa-root.mjs "$PWA_DOMAIN")"
 WEB_ROOT="${WEB_ROOT:-/var/www/pontoocerto}"
@@ -16,6 +17,7 @@ bash scripts/rebuild-server.sh
 if [ "$(realpath apps/mobile/dist)" != "$(realpath "$PWA_ROOT")" ]; then sudo cp -a apps/mobile/dist/. "$PWA_ROOT/"; fi
 if [ "$(realpath apps/web/dist)" != "$(realpath "$WEB_ROOT")" ]; then sudo cp -a apps/web/dist/. "$WEB_ROOT/"; fi
 sudo nginx -t
+sudo nginx -T 2>&1 | node scripts/nginx-control-id-secret-check.mjs
 sudo systemctl reload nginx
 pm2 logs ponto-certo-api --lines 30 --nostream
 printf '\nPublicado. Abra https://%s/ e aceite Atualizar aplicativo.\n' "$PWA_DOMAIN"
