@@ -6,6 +6,7 @@ import type { StoredControlIdTerminal } from "./control-id.service.js";
 import {
   controlIdEntryTypeForSequence,
   controlIdEventDecision,
+  controlIdPunchCooldownDecision,
   controlIdSqlTimestamp,
 } from "./control-id-punch-core.js";
 
@@ -89,7 +90,7 @@ async function controlIdScheduleContext(db: any, event: any, employeeId: number)
 async function markEvent(
   db: any,
   id: number,
-  status: "REJECTED" | "QUARANTINED",
+  status: "DUPLICATE" | "REJECTED" | "QUARANTINED",
   code: string,
   message: string,
 ) {
@@ -188,6 +189,27 @@ export async function processControlIdEvent(id: number) {
     if (!locked) {
       await conn.rollback();
       return { id, status: "RECEIVED", retry: true };
+    }
+    const [previousControlIdEntries] = await conn.query<any[]>(
+      `SELECT TIMESTAMPDIFF(SECOND,registered_at,?) AS elapsed_seconds
+         FROM time_entries
+        WHERE tenant_id=? AND employee_id=? AND source='CONTROL_ID' AND registered_at<=?
+        ORDER BY registered_at DESC,id DESC LIMIT 1`,
+      [event.occurred_at, event.tenant_id, mapping.employee_id, event.occurred_at],
+    );
+    const cooldown = controlIdPunchCooldownDecision(
+      previousControlIdEntries[0] ? Number(previousControlIdEntries[0].elapsed_seconds) : null,
+    );
+    if (cooldown.action === "IGNORE") {
+      const result = await markEvent(
+        conn,
+        id,
+        "DUPLICATE",
+        cooldown.reason,
+        "Batida repetida ignorada: aguarde 60 minutos após a última marcação facial.",
+      );
+      await conn.commit();
+      return result;
     }
     const occurredAt = String(event.occurred_at).slice(0, 19);
     const schedule = await controlIdScheduleContext(conn, event, Number(mapping.employee_id));

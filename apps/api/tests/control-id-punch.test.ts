@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   controlIdEntryTypeForSequence,
   controlIdEventDecision,
+  controlIdPunchCooldownDecision,
   controlIdSqlTimestamp,
 } from "../src/services/control-id-punch-core.js";
 
@@ -38,4 +39,13 @@ test("classifies the chronological sequence without inventing a punch", () => {
 
 test("preserves the wall-clock time encoded by the iDFace access log", () => {
   assert.equal(controlIdSqlTimestamp(1793831400), "2026-11-04 22:30:00");
+});
+
+test("ignores another Control iD punch until the 60 minute boundary", () => {
+  assert.deepEqual(controlIdPunchCooldownDecision(null), { action: "ALLOW", reason: null });
+  assert.deepEqual(controlIdPunchCooldownDecision(3599), {
+    action: "IGNORE",
+    reason: "PUNCH_COOLDOWN",
+  });
+  assert.deepEqual(controlIdPunchCooldownDecision(3600), { action: "ALLOW", reason: null });
 });

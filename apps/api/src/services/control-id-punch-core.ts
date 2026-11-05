@@ -18,6 +18,12 @@ export function controlIdSqlTimestamp(unix: number) {
     .replace("T", " ");
 }
 
+export function controlIdPunchCooldownDecision(elapsedSeconds: number | null) {
+  if (elapsedSeconds != null && elapsedSeconds >= 0 && elapsedSeconds < 60 * 60)
+    return { action: "IGNORE" as const, reason: "PUNCH_COOLDOWN" as const };
+  return { action: "ALLOW" as const, reason: null };
+}
+
 export function controlIdEventDecision(args: {
   event: number;
   userId: string;
