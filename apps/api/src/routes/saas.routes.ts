@@ -1,4 +1,5 @@
 import { Router } from "express";
+import bcrypt from "bcryptjs";
 import { createTenantInTransaction } from "../services/tenant-provisioning.service.js";
 import { commercialRouter,safe } from "./saas-commercial.routes.js";
 import { auditList } from "./team.routes.js";
@@ -154,4 +155,61 @@ saasRouter.patch("/tenants/:id/status", async (req, res) => {
   if (!result.affectedRows) return res.status(404).json({ message: "Tenant não encontrado." });
   await writeAudit(req,"UPDATE_STATUS","tenant",id,undefined,parsed.data);
   res.json({ ok: true });
+});
+
+saasRouter.post("/tenants/:id/reset-admin-password", async (req, res) => {
+  const tenantId = Number(req.params.id);
+  const parsed = z
+    .object({
+      newPassword: z
+        .string()
+        .min(8)
+        .refine((value) => Buffer.byteLength(value, "utf8") <= 72),
+    })
+    .safeParse(req.body);
+  if (!Number.isSafeInteger(tenantId) || tenantId < 1)
+    return res.status(400).json({ message: "Tenant inválido." });
+  if (!parsed.success)
+    return res.status(400).json({
+      message: "A nova senha deve ter pelo menos 8 caracteres e no máximo 72 bytes.",
+    });
+
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query<any[]>(
+      `SELECT u.id,u.name,u.email
+         FROM users u
+         JOIN tenants t ON t.id=u.tenant_id
+        WHERE u.tenant_id=? AND u.role='TENANT_ADMIN' AND u.active=1
+        ORDER BY u.id LIMIT 1 FOR UPDATE`,
+      [tenantId],
+    );
+    const admin = rows[0];
+    if (!admin) {
+      await conn.rollback();
+      return res.status(404).json({ message: "Administrador Master ativo não encontrado." });
+    }
+    const hash = await bcrypt.hash(parsed.data.newPassword, 12);
+    await conn.query(
+      `UPDATE users SET password_hash=?,updated_at=${BRASILIA_NOW_SQL}
+        WHERE id=? AND tenant_id=? AND role='TENANT_ADMIN'`,
+      [hash, admin.id, tenantId],
+    );
+    await conn.query("DELETE FROM persistent_sessions WHERE user_id=? AND tenant_id=?", [
+      admin.id,
+      tenantId,
+    ]);
+    await conn.commit();
+    await writeAudit(req, "RESET_ADMIN_PASSWORD", "user", Number(admin.id), undefined, {
+      tenantId,
+      adminEmail: admin.email,
+    });
+    res.json({ ok: true, adminName: admin.name, adminEmail: admin.email });
+  } catch (error) {
+    await conn.rollback();
+    throw error;
+  } finally {
+    conn.release();
+  }
 });

@@ -50,6 +50,8 @@ export function SaasPage({
   const [tenants, setTenants] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
+  const [resetTenant, setResetTenant] = useState<any>(null);
+  const [resetPassword, setResetPassword] = useState({ password: "", confirm: "" });
   const [form, setForm] = useState<any>(emptyTenantForm());
   const loadState = useLoadState();
 
@@ -96,6 +98,25 @@ export function SaasPage({
       await api.patch(`/saas/tenants/${id}/status`, { status: value });
       notify("Status do tenant atualizado.");
       load();
+    } catch (err) {
+      notify(apiMessage(err), "error");
+    }
+  }
+
+  async function resetAdminPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resetTenant) return;
+    if (resetPassword.password !== resetPassword.confirm) {
+      notify("A confirmação da nova senha não corresponde.", "error");
+      return;
+    }
+    try {
+      await api.post(`/saas/tenants/${resetTenant.id}/reset-admin-password`, {
+        newPassword: resetPassword.password,
+      });
+      notify(`Senha do Master de ${resetTenant.name} redefinida com sucesso.`);
+      setResetTenant(null);
+      setResetPassword({ password: "", confirm: "" });
     } catch (err) {
       notify(apiMessage(err), "error");
     }
@@ -230,15 +251,27 @@ export function SaasPage({
                       </div>
                     </td>
                     <td>
-                      <select
-                        className="compact-select"
-                        value={t.status}
-                        onChange={(e) => status(t.id, e.target.value)}
-                      >
-                        <option value="ACTIVE">Ativo</option>
-                        <option value="SUSPENDED">Suspenso</option>
-                        <option value="CANCELED">Cancelado</option>
-                      </select>
+                      <div className="form-actions">
+                        <select
+                          className="compact-select"
+                          value={t.status}
+                          onChange={(e) => status(t.id, e.target.value)}
+                        >
+                          <option value="ACTIVE">Ativo</option>
+                          <option value="SUSPENDED">Suspenso</option>
+                          <option value="CANCELED">Cancelado</option>
+                        </select>
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            setResetTenant(t);
+                            setResetPassword({ password: "", confirm: "" });
+                          }}
+                        >
+                          Redefinir senha
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -247,6 +280,53 @@ export function SaasPage({
           </div>
         )}
       </div>
+
+      {resetTenant && (
+        <Modal
+          title={`Redefinir senha · ${resetTenant.name}`}
+          onClose={() => setResetTenant(null)}
+        >
+          <AsyncForm className="form-grid" onSubmit={resetAdminPassword}>
+            <div className="info-box span-2">
+              A nova senha será aplicada ao usuário Master ativo deste tenant.
+            </div>
+            <label>
+              Nova senha
+              <input
+                type="password"
+                required
+                minLength={8}
+                maxLength={72}
+                autoComplete="new-password"
+                value={resetPassword.password}
+                onChange={(e) =>
+                  setResetPassword({ ...resetPassword, password: e.target.value })
+                }
+              />
+            </label>
+            <label>
+              Confirmar nova senha
+              <input
+                type="password"
+                required
+                minLength={8}
+                maxLength={72}
+                autoComplete="new-password"
+                value={resetPassword.confirm}
+                onChange={(e) =>
+                  setResetPassword({ ...resetPassword, confirm: e.target.value })
+                }
+              />
+            </label>
+            <div className="form-actions span-2">
+              <button type="button" className="ghost" onClick={() => setResetTenant(null)}>
+                Cancelar
+              </button>
+              <button className="primary">Salvar nova senha</button>
+            </div>
+          </AsyncForm>
+        </Modal>
+      )}
 
       {open && (
         <Modal
