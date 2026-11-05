@@ -3,6 +3,7 @@ import { api } from "../api";
 import { PageHeader } from "../components/Ui";
 import type { Company } from "../types";
 import { apiMessage, brDateTime } from "../utils";
+import { buildControlIdDeviceUrls } from "../control-id-url";
 
 type Terminal = {
   id: number;
@@ -40,6 +41,19 @@ export function ControlIdPage({
     [companies, companyId],
   );
   const apiBase = String(api.defaults.baseURL || location.origin).replace(/\/$/, "");
+  const deviceUrls = useMemo(
+    () => credential ? buildControlIdDeviceUrls(apiBase, credential, location.origin) : null,
+    [apiBase, credential],
+  );
+
+  async function copyConfiguration(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      notify(`${label} copiado.`);
+    } catch {
+      notify(`Não foi possível copiar ${label.toLowerCase()}. Selecione o valor manualmente.`, "error");
+    }
+  }
 
   async function loadCompanies() {
     const { data } = await api.get<Company[]>("/companies");
@@ -171,12 +185,20 @@ export function ControlIdPage({
         </label>
       </section>
 
-      {credential && (
+      {credential && deviceUrls && (
         <section className="panel autopoint-code-card" role="status">
           <div>
-            <span className="eyebrow">CREDENCIAL EXIBIDA UMA ÚNICA VEZ</span>
-            <h3 style={{ wordBreak: "break-all" }}>{credential}</h3>
-            <p>Configure como Bearer token no Push e no Monitor. Não será possível consultar este valor novamente.</p>
+            <span className="eyebrow">CONFIGURAÇÃO SECRETA EXIBIDA UMA ÚNICA VEZ</span>
+            <h3>Preencha o iDFace antes de fechar</h3>
+            <p><strong>Endereço do servidor no iDCloud:</strong></p>
+            <p><code style={{ wordBreak: "break-all" }}>{deviceUrls.pushServer}</code></p>
+            <button className="secondary" onClick={() => copyConfiguration(deviceUrls.pushServer, "Endereço do iDCloud")}>Copiar endereço</button>
+            <p><strong>Período:</strong> <code>5</code> segundos</p>
+            <p><strong>Host do Monitor:</strong> <code>{deviceUrls.monitorHost}</code> · <strong>Porta:</strong> <code>{deviceUrls.monitorPort}</code></p>
+            <p><strong>Caminho do Monitor:</strong></p>
+            <p><code style={{ wordBreak: "break-all" }}>{deviceUrls.monitorPath}</code></p>
+            <button className="secondary" onClick={() => copyConfiguration(deviceUrls.monitorPath, "Caminho do Monitor")}>Copiar caminho</button>
+            <p className="info-box">Esta URL contém a credencial do equipamento. Não compartilhe, não envie em capturas e não grave em logs. Depois de fechar, somente uma troca de credencial exibirá outra URL.</p>
           </div>
           <button className="ghost" onClick={() => setCredential(null)}>Já guardei</button>
         </section>
@@ -239,9 +261,8 @@ export function ControlIdPage({
           </section>
           <section className="panel">
             <div className="section-label">Configuração no iDFace</div>
-            <p><strong>Push:</strong> <code>{apiBase}/push</code></p>
-            <p><strong>Resultado:</strong> <code>{apiBase}/result</code></p>
-            <p><strong>Monitor:</strong> host e porta da API; caminho <code>control-id/monitor</code>.</p>
+            <p>A URL secreta é mostrada somente ao criar ou trocar a credencial. Se ainda não configurou o aparelho, clique em <strong>Trocar credencial</strong>.</p>
+            <p>Firmwares com Bearer Token também podem continuar usando os endpoints nativos da API.</p>
             <p>Ative o Modo Ponto sem tipos personalizados e deixe apenas o leitor facial habilitado.</p>
           </section>
         </>

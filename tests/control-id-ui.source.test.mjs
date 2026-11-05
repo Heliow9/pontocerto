@@ -17,4 +17,8 @@ test("equipment page supports pairing, one-time credential and full sync", async
   assert.match(page, /Sincronizar funcionários/);
   assert.match(page, /\/control-id\/admin\/terminals/);
   assert.match(page, /\/control-id\/admin\/companies/);
+  assert.match(page, /buildControlIdDeviceUrls/);
+  assert.match(page, /Endereço do servidor no iDCloud/);
+  assert.match(page, /Caminho do Monitor/);
+  assert.match(page, /não compartilhe/i);
 });

@@ -34,32 +34,34 @@ A migração esperada é `033_control_id_idface.sql`.
 2. Abra **Cadastros → Equipamentos Control iD**.
 3. Escolha a empresa.
 4. Informe nome/local, número de série e `deviceId`.
-5. Crie o equipamento e copie imediatamente a credencial de 64 caracteres. Ela é mostrada uma única vez.
+5. Crie o equipamento e copie imediatamente a URL secreta e o caminho do Monitor. Eles são mostrados uma única vez.
 
 ## 4. Configurar Push e Monitor
 
 Considere `https://api.exemplo.com` como a URL pública da API.
 
-### Push personalizado
+### Push personalizado — painel sem Bearer Token
 
-- servidor: host e porta HTTPS da API;
-- endpoint de busca: `GET /push`;
-- endpoint de resultado: `POST /result`;
-- autenticação: `Authorization: Bearer <credencial>`;
-- habilite validação TLS e pinning do certificado quando disponíveis.
+- endereço do servidor: copie exatamente a URL secreta mostrada pelo Ponto Certo, no formato `https://api.exemplo.com/control-id/device/<credencial>`;
+- período: `5` segundos;
+- o equipamento acrescentará `/push` e `/result` automaticamente;
+- habilite validação TLS e pinning do certificado quando disponíveis;
+- trate a URL inteira como segredo: não compartilhe, não fotografe e não registre em logs.
 
 O equipamento acrescentará `deviceId` e `uuid` às chamadas Push.
 
+Firmwares que oferecem Bearer Token podem continuar usando os endpoints nativos `GET /push` e `POST /result` com `Authorization: Bearer <credencial>`.
+
 ### Monitor
 
-- hostname: host público da API;
+- hostname: host público da API, sem protocolo;
 - porta: porta HTTPS;
-- path: `control-id/monitor`;
-- autenticação: o mesmo Bearer token.
+- path: copie o caminho secreto mostrado pelo Ponto Certo, no formato `control-id/device/<credencial>/monitor` (inclua o prefixo público da API, como `api/`, quando exibido);
+- período de presença: `30000` ms.
 
-O equipamento enviará logs para `/control-id/monitor/dao` e presença para `/control-id/monitor/device_is_alive`.
+O equipamento acrescentará `/dao` e `/device_is_alive` ao caminho configurado.
 
-Se houver Nginx ou outro proxy, preserve os headers `Authorization` e `Content-Type` e encaminhe `/push`, `/result` e `/control-id/monitor/*` para a API Node.
+Se houver Nginx ou outro proxy, encaminhe todo o prefixo público da API para o Node, preserve `Authorization` e `Content-Type` e não registre os segmentos secretos das URLs.
 
 ## 5. Sincronizar um funcionário
 
