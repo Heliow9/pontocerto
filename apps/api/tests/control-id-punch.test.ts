@@ -36,6 +36,6 @@ test("classifies the chronological sequence without inventing a punch", () => {
   assert.equal(controlIdEntryTypeForSequence(4), "OTHER");
 });
 
-test("converts the Unix event time to the database Brasilia timestamp", () => {
-  assert.equal(controlIdSqlTimestamp(1793831400), "2026-11-04 19:30:00");
+test("preserves the wall-clock time encoded by the iDFace access log", () => {
+  assert.equal(controlIdSqlTimestamp(1793831400), "2026-11-04 22:30:00");
 });

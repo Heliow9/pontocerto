@@ -12,7 +12,7 @@ export function controlIdEntryTypeForSequence(count: number): ControlIdEntryType
 export function controlIdSqlTimestamp(unix: number) {
   if (!Number.isSafeInteger(unix) || unix < 946684800 || unix > 4102444800)
     throw new Error("Horário do evento Control iD inválido.");
-  return new Date(unix * 1000 - 3 * 60 * 60 * 1000)
+  return new Date(unix * 1000)
     .toISOString()
     .slice(0, 19)
     .replace("T", " ");
