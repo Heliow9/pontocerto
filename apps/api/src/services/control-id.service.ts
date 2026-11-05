@@ -108,12 +108,15 @@ export async function createControlIdTerminal(args: {
 
 export async function resolveControlIdTerminal(args: {
   store: ControlIdTerminalStore;
-  authorization: unknown;
+  authorization?: unknown;
+  credential?: unknown;
   vendorDeviceId: unknown;
   pepper: string;
   channel: ControlIdTerminalChannel;
 }) {
-  const token = readBearerToken(args.authorization);
+  const token = args.credential === undefined
+    ? readBearerToken(args.authorization)
+    : readBearerToken(`Bearer ${String(args.credential)}`);
   if (!token)
     throw failure("Credencial do equipamento inválida.", 401, "CONTROL_ID_UNAUTHORIZED");
   const terminal = await args.store.findByCredentialHash(

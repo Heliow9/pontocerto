@@ -129,3 +129,57 @@ test("authenticates the terminal only when credential and device id match", asyn
     /equipamento configurado/i,
   );
 });
+
+test("authenticates a terminal with the secret supplied by the device URL", async () => {
+  const store = memoryStore();
+  const credential = "ef".repeat(32);
+  await createControlIdTerminal({
+    store,
+    tenantId: 7,
+    actorUserId: 9,
+    companyId: 2,
+    name: "Recepção",
+    serialNumber: "0M06000110EB",
+    vendorDeviceId: "4409419584573675",
+    pepper: "server-pepper",
+    createSecret: () => credential,
+  });
+
+  const terminal = await resolveControlIdTerminal({
+    store,
+    credential,
+    vendorDeviceId: "4409419584573675",
+    pepper: "server-pepper",
+    channel: "PUSH",
+  });
+
+  assert.equal(terminal.companyId, 2);
+  assert.equal(store.terminals[0].lastChannel, "PUSH");
+
+  await assert.rejects(
+    () =>
+      resolveControlIdTerminal({
+        store,
+        credential,
+        vendorDeviceId: "999999",
+        pepper: "server-pepper",
+        channel: "MONITOR",
+      }),
+    /equipamento configurado/i,
+  );
+});
+
+test("rejects a malformed secret supplied by the device URL", async () => {
+  const store = memoryStore();
+  await assert.rejects(
+    () =>
+      resolveControlIdTerminal({
+        store,
+        credential: "not-a-secret",
+        vendorDeviceId: "4409419584573675",
+        pepper: "server-pepper",
+        channel: "PUSH",
+      }),
+    /credencial/i,
+  );
+});

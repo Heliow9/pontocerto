@@ -231,56 +231,62 @@ admin.post(
   }),
 );
 
-async function publicTerminal(req: Request, channel: ControlIdTerminalChannel, deviceId?: unknown) {
+async function publicTerminal(
+  req: Request,
+  channel: ControlIdTerminalChannel,
+  deviceId?: unknown,
+) {
   return resolveControlIdTerminal({
     store: mysqlControlIdTerminalStore,
     authorization: req.header("authorization"),
+    credential: req.params.credential,
     vendorDeviceId: deviceId ?? req.query.deviceId ?? req.body?.device_id,
     pepper: env.JWT_SECRET,
     channel,
   });
 }
 
-controlIdDeviceRouter.get(
-  "/push",
-  safe(async (req, res) => {
-    const terminal = await publicTerminal(req, "PUSH");
-    const command = await claimControlIdPushJob(terminal.id, req.query.uuid);
-    if (!command) return res.status(200).send();
-    res.json(command);
-  }),
-);
+const receivePush = safe(async (req: Request, res: Response) => {
+  const terminal = await publicTerminal(req, "PUSH");
+  const command = await claimControlIdPushJob(terminal.id, req.query.uuid);
+  if (!command) return res.status(200).send();
+  res.json(command);
+});
 
-controlIdDeviceRouter.post(
-  "/result",
-  safe(async (req, res) => {
-    const terminal = await publicTerminal(req, "PUSH");
-    await completeControlIdPushJob({
-      terminalId: terminal.id,
-      uuid: req.query.uuid,
-      response: req.body?.response,
-      error: req.body?.error,
-    });
-    res.status(200).send();
-  }),
-);
+const receiveResult = safe(async (req: Request, res: Response) => {
+  const terminal = await publicTerminal(req, "PUSH");
+  await completeControlIdPushJob({
+    terminalId: terminal.id,
+    uuid: req.query.uuid,
+    response: req.body?.response,
+    error: req.body?.error,
+  });
+  res.status(200).send();
+});
 
-controlIdDeviceRouter.post(
-  "/control-id/monitor/dao",
-  safe(async (req, res) => {
-    const terminal = await publicTerminal(req, "MONITOR", req.body?.device_id);
-    const result = await receiveControlIdDao(terminal, req.body);
-    res.status(200).json({ ok: true, ...result });
-  }),
-);
+const receiveDao = safe(async (req: Request, res: Response) => {
+  const terminal = await publicTerminal(req, "MONITOR", req.body?.device_id);
+  const result = await receiveControlIdDao(terminal, req.body);
+  res.status(200).json({ ok: true, ...result });
+});
 
+const receiveAlive = safe(async (req: Request, res: Response) => {
+  const terminal = await publicTerminal(req, "MONITOR", req.body?.device_id);
+  await retryControlIdPendingEvents(terminal.id);
+  res.status(200).send();
+});
+
+controlIdDeviceRouter.get("/push", receivePush);
+controlIdDeviceRouter.post("/result", receiveResult);
+controlIdDeviceRouter.post("/control-id/monitor/dao", receiveDao);
+controlIdDeviceRouter.post("/control-id/monitor/device_is_alive", receiveAlive);
+
+controlIdDeviceRouter.get("/control-id/device/:credential/push", receivePush);
+controlIdDeviceRouter.post("/control-id/device/:credential/result", receiveResult);
+controlIdDeviceRouter.post("/control-id/device/:credential/monitor/dao", receiveDao);
 controlIdDeviceRouter.post(
-  "/control-id/monitor/device_is_alive",
-  safe(async (req, res) => {
-    const terminal = await publicTerminal(req, "MONITOR", req.body?.device_id);
-    await retryControlIdPendingEvents(terminal.id);
-    res.status(200).send();
-  }),
+  "/control-id/device/:credential/monitor/device_is_alive",
+  receiveAlive,
 );
 
 export function controlIdSerialForDisplay(value: unknown) {

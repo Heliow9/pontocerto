@@ -18,3 +18,25 @@ test("exposes the native Control iD Push endpoints at the server root", async ()
   assert.match(push.body.message, /credencial/i);
   assert.match(result.body.message, /credencial/i);
 });
+
+test("exposes secret URL aliases for Push, Result and Monitor", async () => {
+  const { app } = await import("../src/app.js");
+  const credential = "invalid-secret";
+  const push = await request(app).get(
+    `/control-id/device/${credential}/push?deviceId=4409419584573675&uuid=test`,
+  );
+  const result = await request(app)
+    .post(`/control-id/device/${credential}/result?deviceId=4409419584573675&uuid=test`)
+    .send({});
+  const dao = await request(app)
+    .post(`/control-id/device/${credential}/monitor/dao`)
+    .send({ device_id: "4409419584573675", changes: [] });
+  const alive = await request(app)
+    .post(`/control-id/device/${credential}/monitor/device_is_alive`)
+    .send({ device_id: "4409419584573675", access_logs: 0 });
+
+  for (const response of [push, result, dao, alive]) {
+    assert.equal(response.status, 401);
+    assert.match(response.body.message, /credencial/i);
+  }
+});
