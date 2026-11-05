@@ -11,6 +11,7 @@
 **/.expo/
 **/.test-dist/
 **/*.tsbuildinfo
+.superpowers/
 
 # Runtime evidence / generated files
 api/storage/
