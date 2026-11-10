@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 vi.mock("../apps/api/src/db/pool.js", () => ({ pool: {} }));
-import { adjustWorkedMinutesForScheduledBreak, pairWorkedMinutes } from "../apps/api/src/services/calculation.service";
+import { adjustWorkedMinutesForScheduledBreak, applyOvertimeOverride, pairWorkedMinutes } from "../apps/api/src/services/calculation.service";
 const entry = (type: string, time: string) => ({
   id: 1,
   employee_id: 1,
@@ -77,4 +77,14 @@ it("calcula intervalo previsto que atravessa a meia-noite", () => {
     entry("CLOCK_IN", "2026-11-09 22:00:00"),
     entry("CLOCK_OUT", "2026-11-10 06:00:00"),
   ], { exit_1: "23:30:00", entry_2: "00:30:00" }, true)).toEqual({ workedMinutes: 420, deductedMinutes: 60 });
+});
+it("zera somente a hora extra e recompõe o banco quando existe exceção diária", () => {
+  expect(applyOvertimeOverride({ overtimeMinutes: 95, lateMinutes: 13, absenceMinutes: 0 }, true)).toEqual({
+    overtimeMinutes: 0,
+    timeBankMinutes: -13,
+  });
+  expect(applyOvertimeOverride({ overtimeMinutes: 95, lateMinutes: 13, absenceMinutes: 0 }, false)).toEqual({
+    overtimeMinutes: 95,
+    timeBankMinutes: 82,
+  });
 });

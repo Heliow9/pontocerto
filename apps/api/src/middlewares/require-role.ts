@@ -6,6 +6,7 @@ import { writeAudit } from "../utils/audit.js";
 function sensitiveFor(req:Request):SensitivePermission|null{
   const base=req.baseUrl,path=req.path,method=req.method;
   if(base==="/audit")return "audit.view";
+  if(base==="/reports" && path.includes("overtime-override"))return "overtime.manage";
   if(base==="/reports" && (path.includes("export")||path.includes("payroll")||path.includes("download")||String(req.query.format||"").toLowerCase()!==""))return "reports.export";
   if(base==="/time-entries" && !["GET","HEAD","OPTIONS"].includes(method))return "points.adjust";
   if(base==="/adjustments" && !["GET","HEAD","OPTIONS"].includes(method))return "adjustments.approve";

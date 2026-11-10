@@ -133,6 +133,17 @@ export function adjustWorkedMinutesForScheduledBreak(
   return { workedMinutes: raw - deductedMinutes, deductedMinutes };
 }
 
+export function applyOvertimeOverride(
+  values: { overtimeMinutes: number; lateMinutes: number; absenceMinutes: number },
+  ignored: boolean,
+): { overtimeMinutes: number; timeBankMinutes: number } {
+  const overtimeMinutes = ignored ? 0 : values.overtimeMinutes;
+  return {
+    overtimeMinutes,
+    timeBankMinutes: overtimeMinutes - values.lateMinutes - values.absenceMinutes,
+  };
+}
+
 function dateInRange(date: string, start: string, end: string): boolean {
   return date >= start.slice(0, 10) && date <= end.slice(0, 10);
 }
@@ -201,6 +212,7 @@ export async function processPeriod(params: {
 
   const employeeIds = employeeRows.map((e) => e.id);
   const entriesByEmployeeDate = new Map<string, TimeEntryRow[]>();
+  const overtimeOverrides = new Map<string, string>();
   if (employeeIds.length) {
     const placeholders = employeeIds.map(() => "?").join(",");
     const [entries] = await pool.query<any[]>(
@@ -222,6 +234,15 @@ export async function processPeriod(params: {
       list.push(entry);
       entriesByEmployeeDate.set(key, list);
     }
+    const [overrides] = await pool.query<any[]>(
+      `SELECT employee_id,work_date,reason
+         FROM employee_overtime_overrides
+        WHERE tenant_id=? AND active=1 AND override_type='IGNORE_OVERTIME'
+          AND employee_id IN (${placeholders}) AND work_date BETWEEN ? AND ?`,
+      [tenantId, ...employeeIds, start, end],
+    );
+    for (const row of overrides)
+      overtimeOverrides.set(`${row.employee_id}:${String(row.work_date).slice(0, 10)}`, row.reason);
   }
 
   const [holidays] = await pool.query<any[]>(
@@ -321,7 +342,12 @@ export async function processPeriod(params: {
         overtimeMinutes = overage > overtimeTolerance ? overage : 0;
       }
 
-      const timeBankMinutes = overtimeMinutes - lateMinutes - absenceMinutes;
+      const overtimeResult = applyOvertimeOverride(
+        { overtimeMinutes, lateMinutes, absenceMinutes },
+        overtimeOverrides.has(`${employee.id}:${date}`),
+      );
+      overtimeMinutes = overtimeResult.overtimeMinutes;
+      const timeBankMinutes = overtimeResult.timeBankMinutes;
 
       await pool.query(
         `INSERT INTO daily_time_calculations
