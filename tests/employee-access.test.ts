@@ -44,6 +44,10 @@ beforeEach(() => {
   m.query.mockImplementation(async (sql: string, params: any[] = []) => {
     if (sql.includes("FROM companies"))
       return [[{ id: 2, legal_name: "Árvore Serviços Ltda" }]];
+    if (sql.includes("FROM work_schedules")) return [[]];
+    if (sql.includes("FROM work_locations")) return [[]];
+    if (sql.includes("FROM employee_groups")) return [[]];
+    if (sql.includes("FROM employee_locations")) return [[]];
     if (sql.includes("COUNT(*)")) return [[{ total: m.total }]];
     if (
       sql.includes("FROM subscriptions") ||
@@ -99,6 +103,20 @@ it("suggests normalized names and skips globally occupied addresses", async () =
     "joao.silva4@arvore.com.br",
     "joao.silva5@arvore.com.br",
   ]);
+});
+it("serves employee editor options and assigned locations inside the employee permission boundary", async () => {
+  const options = await request(app).get("/employees/options");
+  expect(options.status).toBe(200);
+  expect(options.body).toMatchObject({
+    companies: [{ id: 2, legal_name: "Árvore Serviços Ltda" }],
+  });
+  expect(Array.isArray(options.body.schedules)).toBe(true);
+  expect(Array.isArray(options.body.locations)).toBe(true);
+  expect(Array.isArray(options.body.groups)).toBe(true);
+
+  const assigned = await request(app).get("/employees/11/locations");
+  expect(assigned.status).toBe(200);
+  expect(Array.isArray(assigned.body)).toBe(true);
 });
 it("rejects an occupied email on save with alternative suggestions", async () => {
   m.total = 0;

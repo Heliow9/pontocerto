@@ -60,6 +60,52 @@ employeesRouter.get("/email-suggestions", requireRole("TENANT_ADMIN", "RH"), asy
   res.json({ suggestions: await employeeEmailSuggestions(req.auth!.tenantId, parsed.data.companyId, parsed.data.name) });
 });
 
+employeesRouter.get("/options", async (req, res) => {
+  const tenantId = req.auth!.tenantId;
+  const companyId = req.auth!.companyId ? Number(req.auth!.companyId) : null;
+  const scope = companyId ? " AND company_id=?" : "";
+  const params = companyId ? [tenantId, companyId] : [tenantId];
+  const [companies, schedules, locations, groups] = await Promise.all([
+    pool.query<any[]>(
+      `SELECT id,legal_name,trade_name,active FROM companies WHERE tenant_id=?${companyId ? " AND id=?" : ""} ORDER BY active DESC,legal_name`,
+      params,
+    ),
+    pool.query<any[]>(
+      `SELECT id,company_id,name,active FROM work_schedules WHERE tenant_id=?${scope} ORDER BY active DESC,name`,
+      params,
+    ),
+    pool.query<any[]>(
+      `SELECT id,company_id,name,address,geo_mode,radius_meters,active FROM work_locations WHERE tenant_id=?${scope} ORDER BY active DESC,name`,
+      params,
+    ),
+    pool.query<any[]>(
+      `SELECT id,company_id,name FROM employee_groups WHERE tenant_id=?${scope} ORDER BY name`,
+      params,
+    ),
+  ]);
+  res.json({
+    companies: companies[0],
+    schedules: schedules[0],
+    locations: locations[0],
+    groups: groups[0],
+  });
+});
+
+employeesRouter.get("/:id/locations", async (req, res) => {
+  const employeeId = Number(req.params.id);
+  if (!Number.isSafeInteger(employeeId) || employeeId < 1)
+    return res.status(400).json({ message: "Funcionário inválido." });
+  const [rows] = await pool.query<any[]>(
+    `SELECT wl.id,wl.name,wl.company_id,wl.address,wl.geo_mode,wl.radius_meters
+       FROM employee_locations el
+       JOIN work_locations wl ON wl.id=el.work_location_id AND wl.tenant_id=el.tenant_id
+      WHERE el.tenant_id=? AND el.employee_id=? AND wl.active=1
+      ORDER BY wl.name`,
+    [req.auth!.tenantId, employeeId],
+  );
+  res.json(rows);
+});
+
 employeesRouter.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const [rows] = await pool.query<any[]>(`${listSql} AND e.id=? LIMIT 1`, [req.auth!.tenantId, id]);

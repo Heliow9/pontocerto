@@ -154,6 +154,19 @@ export function App() {
   }
   useEffect(() => {
     if (token) void restore();
+  }, [token, route]);
+  useEffect(() => {
+    if (!token) return;
+    const refresh = () => void restore();
+    const visible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", visible);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", visible);
+    };
   }, [token]);
   useEffect(() => {
     const hash = () => {

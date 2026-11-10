@@ -97,16 +97,13 @@ export function EmployeesPage({
   const fetchData = () =>
     Promise.all([
       api.get("/employees", { params: { includeInactive: "1" } }),
-      api.get("/companies"),
-      api.get("/schedules"),
-      api.get("/locations"),
-      api.get("/groups"),
-    ]).then(([a, b, c, d, g]) => {
+      api.get("/employees/options"),
+    ]).then(([a, options]) => {
       setItems(a.data);
-      setCompanies(b.data);
-      setSchedules(c.data);
-      setLocations(d.data);
-      setGroups(g.data);
+      setCompanies(options.data.companies);
+      setSchedules(options.data.schedules);
+      setLocations(options.data.locations);
+      setGroups(options.data.groups);
     });
 
   const load = () => loadState.run(fetchData);
@@ -144,7 +141,7 @@ export function EmployeesPage({
     }
     let assigned: number[] = [];
     try {
-      const { data } = await api.get(`/locations/employee/${item.id}`);
+      const { data } = await api.get(`/employees/${item.id}/locations`);
       if (request !== editRequest.current) return;
       assigned = data.map((x: any) => Number(x.id));
     } catch {

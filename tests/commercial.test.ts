@@ -2,7 +2,7 @@ import {beforeEach,expect,it,vi} from "vitest";
 import express from "express";
 import request from "supertest";
 import PizZip from "pizzip";
-import {mergeFeatures,defaultSupervisorPermissions,supervisorAllowed,proposalStatus,csvCell,proposalSchema} from "../apps/api/src/services/commercial-rules";
+import {mergeFeatures,defaultSupervisorPermissions,permissionModule,supervisorAllowed,proposalStatus,csvCell,proposalSchema} from "../apps/api/src/services/commercial-rules";
 import {protectSecret,revealSecret} from "../apps/api/src/services/saas-secrets";
 import {proposalDocx} from "../apps/api/src/services/proposal-documents.service";
 import {contractDocx} from "../apps/api/src/services/contract-documents.service";
@@ -20,9 +20,20 @@ it("enforces the effective employee cap including batch imports",async()=>{m.que
 it("blocks a second company when branches are disabled",async()=>{m.query.mockImplementation(async(sql:string)=>sql.includes("FROM tenants")?[[{plan_features:'{"branches":false}'}]]:sql.includes("ce.features_json")?[[{features_json:null}]]:[[{id:2}]]);await expect(checkBranchCapacity(7)).rejects.toMatchObject({status:403});});
 it("feature denial is enforced on API and a company exception can release it",async()=>{let allow=false;m.query.mockImplementation(async(sql:string)=>sql.includes("FROM tenants")?[[{plan_features:'{"whatsapp":false}'}]]:[[{features_json:JSON.stringify({whatsapp:allow})}]]);await expect(requireFeature(7,2,"whatsapp")).rejects.toMatchObject({status:403});allow=true;await expect(requireFeature(7,2,"whatsapp")).resolves.toBeUndefined();});
 it("read-only supervisors cannot mutate or generate payroll; write is module-specific",()=>{const p={...defaultSupervisorPermissions,employees:"write" as const};expect(supervisorAllowed(p,"/employees","POST")).toBe(true);expect(supervisorAllowed(p,"/companies","DELETE")).toBe(false);expect(supervisorAllowed(p,"/reports","GET","/payroll/history")).toBe(false);expect(supervisorAllowed(p,"/saas","GET")).toBe(false);});
+it("employee permission covers facial photos, devices and group membership",()=>{
+  expect(permissionModule("/face")).toBe("employees");
+  expect(permissionModule("/devices")).toBe("employees");
+  expect(permissionModule("/groups")).toBe("employees");
+  const read={...defaultSupervisorPermissions,employees:"read" as const};
+  const write={...defaultSupervisorPermissions,employees:"write" as const};
+  expect(supervisorAllowed(read,"/face","GET")).toBe(true);
+  expect(supervisorAllowed(read,"/face","POST")).toBe(false);
+  expect(supervisorAllowed(write,"/face","POST")).toBe(true);
+  expect(supervisorAllowed(write,"/devices","DELETE")).toBe(true);
+});
 function accessApp(){const app=express();app.use((req:any,_res,next)=>{req.auth={tenantId:7,userId:3,role:req.headers["x-role"]||"SUPERVISOR"};next();});const router=express.Router();router.use(requireRole("TENANT_ADMIN","SUPERVISOR","SUPER_ADMIN"));router.get("/",(_req,res)=>res.json({ok:true}));router.post("/",(_req,res)=>res.json({ok:true}));app.use("/employees",router);app.use((err:any,_req:any,res:any,_next:any)=>res.status(500).json({message:err.message}));return app;}
 it("SaaS Admin cannot operate an enterprise even when legacy routes list SUPER_ADMIN",async()=>{expect((await request(accessApp()).get("/employees").set("x-role","SUPER_ADMIN")).status).toBe(403);});
-it("permissions take effect on existing supervisor sessions and disabled users are rejected",async()=>{let active=true,level="read";m.query.mockImplementation(async()=>[[{active,permissions_json:JSON.stringify({...defaultSupervisorPermissions,employees:level})}]]);const app=accessApp();expect((await request(app).get("/employees")).status).toBe(200);expect((await request(app).post("/employees")).status).toBe(403);level="write";expect((await request(app).post("/employees")).status).toBe(200);active=false;expect((await request(app).get("/employees")).status).toBe(403);expect(m.audit.mock.calls.some(c=>c[5]?.status===403)).toBe(true);});
+it("permissions take effect on existing supervisor sessions and disabled users are rejected",async()=>{let active=true,level="read";m.query.mockImplementation(async()=>[[{active,permissions_json:JSON.stringify({...defaultSupervisorPermissions,employees:level})}]]);const app=accessApp();expect((await request(app).get("/employees")).status).toBe(200);expect((await request(app).post("/employees")).status).toBe(403);level="write";expect((await request(app).post("/employees")).status).toBe(200);active=false;expect((await request(app).get("/employees")).status).toBe(403);expect(m.audit.mock.calls.some(c=>c[6]==="ERROR"&&c[7]?.path==="/employees")).toBe(true);});
 it("expired proposals cannot appear as still sent and approved proposals keep their decision",()=>{expect(proposalStatus("SENT","2026-09-10","2026-09-13")).toBe("EXPIRED");expect(proposalStatus("APPROVED","2026-09-10","2026-09-13")).toBe("APPROVED");expect(csvCell('=HYPERLINK("bad")')).toBe('"\'=HYPERLINK(""bad"")"');});
 it("encrypts mail credentials with authentication and fails closed on tampering",()=>{vi.stubEnv("WHATSAPP_ENCRYPTION_KEY","a".repeat(64));const encrypted=protectSecret("smtp-password-example");expect(encrypted).not.toContain("smtp-password-example");expect(revealSecret(encrypted)).toBe("smtp-password-example");expect(()=>revealSecret(encrypted.slice(0,-4)+"AAAA")).toThrow();vi.unstubAllEnvs();});
 
