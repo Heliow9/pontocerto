@@ -11,6 +11,7 @@ type EmployeeRow = {
   id: number;
   company_id: number;
   work_schedule_id: number | null;
+  auto_deduct_scheduled_break: number;
 };
 
 type ScheduleRow = {
@@ -24,6 +25,8 @@ type ScheduleDayRow = {
   weekday: number;
   is_day_off: number;
   expected_minutes: number;
+  exit_1?: string | null;
+  entry_2?: string | null;
 };
 
 type TimeEntryRow = {
@@ -102,6 +105,34 @@ export function pairWorkedMinutes(entries: TimeEntryRow[]): number {
   return total;
 }
 
+function clockMinutes(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = /^(\d{1,2}):(\d{2})/.exec(value);
+  if (!match) return null;
+  const hours = Number(match[1]), minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return null;
+  return hours * 60 + minutes;
+}
+
+export function scheduledBreakMinutes(day: { exit_1?: string | null; entry_2?: string | null }): number {
+  const start = clockMinutes(day.exit_1), end = clockMinutes(day.entry_2);
+  if (start === null || end === null) return 0;
+  const duration = (end - start + 1440) % 1440;
+  return duration > 0 && duration <= 720 ? duration : 0;
+}
+
+export function adjustWorkedMinutesForScheduledBreak(
+  entries: TimeEntryRow[],
+  day: { exit_1?: string | null; entry_2?: string | null },
+  enabled: boolean,
+): { workedMinutes: number; deductedMinutes: number } {
+  const raw = pairWorkedMinutes(entries);
+  if (!enabled || entries.length !== 2)
+    return { workedMinutes: raw, deductedMinutes: 0 };
+  const deductedMinutes = Math.min(raw, scheduledBreakMinutes(day));
+  return { workedMinutes: raw - deductedMinutes, deductedMinutes };
+}
+
 function dateInRange(date: string, start: string, end: string): boolean {
   return date >= start.slice(0, 10) && date <= end.slice(0, 10);
 }
@@ -124,12 +155,12 @@ export async function processPeriod(params: {
     return { processed: 0, employees: 0, days: 0 };
 
   const employeeSql = employeeId
-    ? `SELECT id, company_id, work_schedule_id FROM employees
+    ? `SELECT id, company_id, work_schedule_id, auto_deduct_scheduled_break FROM employees
        WHERE tenant_id = ? AND active = 1 AND id = ?`
     : selectedEmployeeIds
-      ? `SELECT id, company_id, work_schedule_id FROM employees
+      ? `SELECT id, company_id, work_schedule_id, auto_deduct_scheduled_break FROM employees
        WHERE tenant_id = ? AND active = 1 AND id IN (${selectedEmployeeIds.map(() => "?").join(",")})`
-      : `SELECT id, company_id, work_schedule_id FROM employees
+      : `SELECT id, company_id, work_schedule_id, auto_deduct_scheduled_break FROM employees
        WHERE tenant_id = ? AND active = 1`;
   const employeeParams = employeeId
     ? [tenantId, employeeId]
@@ -159,7 +190,7 @@ export async function processPeriod(params: {
     for (const row of schedules) scheduleById.set(row.id, row);
 
     const [days] = await pool.query<any[]>(
-      `SELECT work_schedule_id, weekday, is_day_off, expected_minutes
+      `SELECT work_schedule_id, weekday, is_day_off, expected_minutes, exit_1, entry_2
          FROM work_schedule_days
         WHERE tenant_id = ? AND work_schedule_id IN (${placeholders})`,
       [tenantId, ...scheduleIds],
@@ -223,7 +254,7 @@ export async function processPeriod(params: {
         ? dayByScheduleWeekday.get(`${employee.work_schedule_id}:${weekday}`)
         : undefined;
       const entries = entriesByEmployeeDate.get(`${employee.id}:${date}`) || [];
-      const workedMinutes = pairWorkedMinutes(entries);
+      const rawWorkedMinutes = pairWorkedMinutes(entries);
       const pointsText = entries
         .map(
           (entry) =>
@@ -242,6 +273,12 @@ export async function processPeriod(params: {
           Number(a.employee_id) === employee.id &&
           dateInRange(date, a.start_date, a.end_date),
       );
+      const breakAdjustment = adjustWorkedMinutesForScheduledBreak(
+        entries,
+        scheduleDay || {},
+        Boolean(employee.auto_deduct_scheduled_break) && !holiday && !absence && !scheduleDay?.is_day_off,
+      );
+      const workedMinutes = breakAdjustment.workedMinutes;
 
       let status = "NORMAL";
       let statusLabel: string | null = null;
@@ -289,13 +326,13 @@ export async function processPeriod(params: {
       await pool.query(
         `INSERT INTO daily_time_calculations
          (tenant_id, company_id, employee_id, work_date, status, status_label, points_text,
-          expected_minutes, worked_minutes, normal_minutes, overtime_minutes, late_minutes,
+          expected_minutes, worked_minutes, break_deducted_minutes, normal_minutes, overtime_minutes, late_minutes,
           absence_minutes, night_minutes, time_bank_minutes, processed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ${BRASILIA_NOW_SQL})
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ${BRASILIA_NOW_SQL})
          ON DUPLICATE KEY UPDATE
            company_id = VALUES(company_id), status = VALUES(status), status_label = VALUES(status_label),
            points_text = VALUES(points_text), expected_minutes = VALUES(expected_minutes),
-           worked_minutes = VALUES(worked_minutes), normal_minutes = VALUES(normal_minutes),
+            worked_minutes = VALUES(worked_minutes), break_deducted_minutes = VALUES(break_deducted_minutes), normal_minutes = VALUES(normal_minutes),
            overtime_minutes = VALUES(overtime_minutes), late_minutes = VALUES(late_minutes),
            absence_minutes = VALUES(absence_minutes), time_bank_minutes = VALUES(time_bank_minutes),
            processed_at = VALUES(processed_at)`,
@@ -309,6 +346,7 @@ export async function processPeriod(params: {
           pointsText || null,
           expectedMinutes,
           workedMinutes,
+          breakAdjustment.deductedMinutes,
           normalMinutes,
           overtimeMinutes,
           lateMinutes,

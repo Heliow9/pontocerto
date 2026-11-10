@@ -18,7 +18,7 @@ employeesRouter.use("/import", employeeImportRouter);
 
 const listSql = `SELECT e.id, e.company_id, e.name, e.cpf, e.pis, e.registration_number,
                         e.admission_date, e.ctps, e.position_name, e.department_name,
-                        e.group_id, g.name AS group_name, e.work_schedule_id, e.biometric_exempt, e.active,
+                         e.group_id, g.name AS group_name, e.work_schedule_id, e.biometric_exempt, e.auto_deduct_scheduled_break, e.active,
                         c.legal_name AS company_name,
                         s.name AS schedule_name,
                         u.id AS user_id, u.email AS access_email,
@@ -126,6 +126,7 @@ const employeeSchema = z.object({
   departmentName: z.string().optional().nullable(),
   workScheduleId: z.number().int().positive().optional().nullable(),
   biometricExempt: z.boolean().optional().default(false),
+  autoDeductScheduledBreak: z.boolean().optional(),
   workLocationIds: z.array(z.number().int().positive()).optional().default([]),
   active: z.boolean().optional().default(true),
   accessEmail: z.string().trim().toLowerCase().max(190).email().or(z.literal("")).optional().nullable(),
@@ -184,12 +185,12 @@ employeesRouter.post(
       const [result] = await conn.query<any>(
         `INSERT INTO employees
          (tenant_id, company_id, name, cpf, pis, registration_number, admission_date, ctps,
-          position_name, department_name, group_id, work_schedule_id, biometric_exempt, active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
+           position_name, department_name, group_id, work_schedule_id, biometric_exempt, auto_deduct_scheduled_break, active, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${BRASILIA_NOW_SQL}, ${BRASILIA_NOW_SQL})`,
         [
           req.auth!.tenantId, e.companyId, e.name, e.cpf || null, e.pis || null,
           e.registrationNumber || null, e.admissionDate || null, e.ctps || null,
-          e.positionName || null, e.departmentName || null, e.groupId || null, e.workScheduleId || null, e.biometricExempt ? 1 : 0, e.active ? 1 : 0
+          e.positionName || null, e.departmentName || null, e.groupId || null, e.workScheduleId || null, e.biometricExempt ? 1 : 0, e.autoDeductScheduledBreak ? 1 : 0, e.active ? 1 : 0
         ]
       );
       const employeeId = Number(result.insertId);
@@ -255,17 +256,20 @@ employeesRouter.put(
       const [current] = await conn.query<any[]>("SELECT * FROM employees WHERE id=? AND tenant_id=? FOR UPDATE", [id, req.auth!.tenantId]);
       if (!current[0]) throw Object.assign(new Error("Funcionário não encontrado."), { status: 404 });
       beforeRows[0] = current[0];
+      const autoDeductScheduledBreak = e.autoDeductScheduledBreak === undefined
+        ? Boolean(current[0].auto_deduct_scheduled_break)
+        : e.autoDeductScheduledBreak;
       if (e.active && !current[0].active) await checkEmployeeCapacity(req.auth!.tenantId, 1, conn);
       if (e.accessEmail && await employeeEmailTaken(e.accessEmail, req.auth!.tenantId, id, conn))
         throw Object.assign(new Error("E-mail já cadastrado. Escolha uma das sugestões disponíveis."), { status: 409, emailConflict: true });
       await conn.query(
         `UPDATE employees SET company_id=?, name=?, cpf=?, pis=?, registration_number=?, admission_date=?,
-          ctps=?, position_name=?, department_name=?, group_id=?, work_schedule_id=?, biometric_exempt=?, active=?, updated_at=${BRASILIA_NOW_SQL}
+          ctps=?, position_name=?, department_name=?, group_id=?, work_schedule_id=?, biometric_exempt=?, auto_deduct_scheduled_break=?, active=?, updated_at=${BRASILIA_NOW_SQL}
           WHERE id=? AND tenant_id=?`,
         [
           e.companyId, e.name, e.cpf || null, e.pis || null, e.registrationNumber || null,
           e.admissionDate || null, e.ctps || null, e.positionName || null, e.departmentName || null, e.groupId || null,
-          e.workScheduleId || null, e.biometricExempt ? 1 : 0, e.active ? 1 : 0, id, req.auth!.tenantId
+          e.workScheduleId || null, e.biometricExempt ? 1 : 0, autoDeductScheduledBreak ? 1 : 0, e.active ? 1 : 0, id, req.auth!.tenantId
         ]
       );
 

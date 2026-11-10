@@ -34,6 +34,7 @@ const blank = {
   workScheduleId: null as number | null,
   workLocationIds: [] as number[],
   biometricExempt: false,
+  autoDeductScheduledBreak: false,
   active: true,
   accessEmail: "",
   accessPassword: "",
@@ -166,6 +167,7 @@ export function EmployeesPage({
       workScheduleId: item.work_schedule_id || null,
       workLocationIds: assigned,
       biometricExempt: Boolean(item.biometric_exempt),
+      autoDeductScheduledBreak: Boolean(item.auto_deduct_scheduled_break),
       active: Boolean(item.active),
       accessEmail: item.access_email || "",
       accessPassword: "",
@@ -796,6 +798,17 @@ export function EmployeesPage({
                 permitido, jornada e horário oficial do servidor. Se esta opção
                 for alterada, os aparelhos vinculados serão revogados para
                 aplicar a nova política com segurança.
+              </div>
+              <label className="checkbox-row span-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.autoDeductScheduledBreak)}
+                  onChange={(e) => setForm({ ...form, autoDeductScheduledBreak: e.target.checked })}
+                />
+                Descontar o intervalo previsto quando houver somente entrada e saída
+              </label>
+              <div className="muted span-2">
+                Use para funcionários que não registram as batidas do intervalo. Com quatro marcações, nenhum desconto adicional será aplicado.
               </div>
 
               <div className="section-label span-2">Foto para validação facial</div>

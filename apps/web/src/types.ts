@@ -47,6 +47,7 @@ export type Employee = {
   work_schedule_id?: number | null;
   schedule_name?: string | null;
   biometric_exempt?: number | null;
+  auto_deduct_scheduled_break?: number | null;
   active: number;
   access_email?: string | null;
   location_names?: string | null;
