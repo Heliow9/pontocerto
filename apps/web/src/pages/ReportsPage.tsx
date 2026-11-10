@@ -11,6 +11,7 @@ import { Empty, PageHeader } from "../components/Ui";
 import { apiMessage, brDate, minutesToHHMM, monthRange } from "../utils";
 import { PayrollExportPanel } from "../components/PayrollExportPanel";
 import { useAccess } from "../components/Access";
+import { dailyOvertimeAction } from "../report-overtime";
 
 export function ReportsPage({
   notify,
@@ -18,7 +19,8 @@ export function ReportsPage({
   notify: (m: string, t?: "ok" | "error") => void;
 }) {
   const range = monthRange();
-  const { canManage } = useAccess();
+  const { canManage, can } = useAccess();
+  const canManageOvertime = can("overtime.manage");
   const [tab, setTab] = useState<"monthly" | "payroll">(
     canManage &&
       new URLSearchParams(location.hash.split("?")[1]).get("tab") === "payroll"
@@ -30,7 +32,8 @@ export function ReportsPage({
     [start, setStart] = useState(range.start),
     [end, setEnd] = useState(range.end),
     [report, setReport] = useState<any>(null),
-    [loading, setLoading] = useState(false);
+    [loading, setLoading] = useState(false),
+    [overrideBusy, setOverrideBusy] = useState("");
   const state = useLoadState();
   const loadEmployees = () =>
     state.run(async () => {
@@ -82,6 +85,40 @@ export function ReportsPage({
       notify(apiMessage(err), "error");
     } finally {
       setLoading(false);
+    }
+  }
+  async function ignoreOvertime(day: any) {
+    const reason = window.prompt(
+      `Justificativa para ignorar a hora extra de ${brDate(day.work_date)}:`,
+      day.overtime_ignore_reason || "",
+    )?.trim();
+    if (!reason) return;
+    if (reason.length < 3) {
+      notify("Informe uma justificativa com pelo menos 3 caracteres.", "error");
+      return;
+    }
+    setOverrideBusy(day.work_date);
+    try {
+      await api.put(`/reports/overtime-override/${employeeId}/${day.work_date.slice(0,10)}`, { reason });
+      await preview();
+      notify("Hora extra ignorada e espelho recalculado.");
+    } catch (err) {
+      notify(apiMessage(err), "error");
+    } finally {
+      setOverrideBusy("");
+    }
+  }
+  async function restoreOvertime(day: any) {
+    if (!confirm(`Restaurar a hora extra calculada de ${brDate(day.work_date)}?`)) return;
+    setOverrideBusy(day.work_date);
+    try {
+      await api.delete(`/reports/overtime-override/${employeeId}/${day.work_date.slice(0,10)}`);
+      await preview();
+      notify("Hora extra restaurada e espelho recalculado.");
+    } catch (err) {
+      notify(apiMessage(err), "error");
+    } finally {
+      setOverrideBusy("");
     }
   }
   const totals = report?.days?.reduce(
@@ -236,6 +273,7 @@ export function ReportsPage({
                       <th>Horas extras</th>
                       <th>Atrasos</th>
                       <th>Faltas</th>
+                      {canManage && canManageOvertime && <th>Ações</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -247,7 +285,12 @@ export function ReportsPage({
                             ? ""
                             : d.status_label || d.status}
                         </td>
-                        <td>{d.points_text || ""}</td>
+                        <td>
+                          {d.points_text || ""}
+                          {Number(d.break_deducted_minutes || 0) > 0 && (
+                            <small className="muted">Intervalo previsto descontado: {minutesToHHMM(d.break_deducted_minutes)}</small>
+                          )}
+                        </td>
                         <td>
                           {d.expected_minutes
                             ? minutesToHHMM(d.expected_minutes)
@@ -262,6 +305,9 @@ export function ReportsPage({
                           {d.overtime_minutes
                             ? minutesToHHMM(d.overtime_minutes)
                             : ""}
+                          {Boolean(d.overtime_ignored) && (
+                            <small className="muted" title={d.overtime_ignore_reason || ""}>Ignorada: {d.overtime_ignore_reason}</small>
+                          )}
                         </td>
                         <td className="negative">
                           {d.late_minutes ? minutesToHHMM(-d.late_minutes) : ""}
@@ -271,6 +317,16 @@ export function ReportsPage({
                             ? minutesToHHMM(-d.absence_minutes)
                             : ""}
                         </td>
+                        {canManage && canManageOvertime && (
+                          <td>
+                            {dailyOvertimeAction(d, canManage, canManageOvertime) === "ignore" && (
+                              <button className="ghost" disabled={overrideBusy === d.work_date} onClick={() => ignoreOvertime(d)}>Ignorar hora extra</button>
+                            )}
+                            {dailyOvertimeAction(d, canManage, canManageOvertime) === "restore" && (
+                              <button className="ghost" disabled={overrideBusy === d.work_date} onClick={() => restoreOvertime(d)}>Restaurar hora extra</button>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

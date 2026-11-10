@@ -218,7 +218,12 @@ reportsRouter.get("/monthly/:employeeId", async (req, res) => {
     totalAbsence += Number(d.absence_minutes || 0);
 
     const isSpecial = ["FOLGA", "FERIADO", "FALTA", "ATESTADO", "FERIAS", "AFASTAMENTO", "LICENCA", "ABONO"].includes(d.status);
-    const statusText = d.status === "NORMAL" ? "" : (d.status_label || d.status);
+    const annotations = [
+      d.status === "NORMAL" ? "" : (d.status_label || d.status),
+      d.break_deducted_minutes ? `Int. -${minutesToHHMM(d.break_deducted_minutes)}` : "",
+      d.overtime_ignored ? "Extra ignorada" : "",
+    ].filter(Boolean);
+    const statusText = annotations.join(" · ");
     const values = [
       `${ptDate(d.work_date)} - ${weekdayShortPt(d.work_date)}`,
       statusText,
