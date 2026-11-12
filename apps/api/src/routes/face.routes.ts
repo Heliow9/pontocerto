@@ -23,9 +23,18 @@ async function employee(req: any) {
   const id = Number(req.params.id);
   if (!Number.isSafeInteger(id) || id < 1)
     throw faceError("Funcionário inválido.", "EMPLOYEE_NOT_FOUND", 404);
+  const supervisorCompanyId = req.auth.role === "SUPERVISOR"
+    ? Number(req.auth.companyId || 0)
+    : null;
+  if (req.auth.role === "SUPERVISOR" && !supervisorCompanyId)
+    throw faceError("Funcionário não encontrado.", "EMPLOYEE_NOT_FOUND", 404);
   const [rows] = await pool.query<any[]>(
-    "SELECT id,company_id FROM employees WHERE id=? AND tenant_id=? LIMIT 1",
-    [id, req.auth.tenantId],
+    `SELECT id,company_id FROM employees WHERE id=? AND tenant_id=?${
+      supervisorCompanyId ? " AND company_id=?" : ""
+    } LIMIT 1`,
+    supervisorCompanyId
+      ? [id, req.auth.tenantId, supervisorCompanyId]
+      : [id, req.auth.tenantId],
   );
   if (!rows[0])
     throw faceError("Funcionário não encontrado.", "EMPLOYEE_NOT_FOUND", 404);
