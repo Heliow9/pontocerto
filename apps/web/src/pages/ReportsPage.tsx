@@ -11,7 +11,11 @@ import { Empty, PageHeader } from "../components/Ui";
 import { apiMessage, brDate, minutesToHHMM, monthRange } from "../utils";
 import { PayrollExportPanel } from "../components/PayrollExportPanel";
 import { useAccess } from "../components/Access";
-import { dailyOvertimeAction } from "../report-overtime";
+import {
+  canReprocessReport,
+  dailyOvertimeAction,
+  overtimePermissionNotice,
+} from "../report-overtime";
 
 export function ReportsPage({
   notify,
@@ -125,12 +129,14 @@ export function ReportsPage({
     (a: any, d: any) => ({
       expected: a.expected + Number(d.expected_minutes || 0),
       normal: a.normal + Number(d.normal_minutes || 0),
+      excused: a.excused + Number(d.excused_minutes || 0),
       extra: a.extra + Number(d.overtime_minutes || 0),
       late: a.late + Number(d.late_minutes || 0),
       absence: a.absence + Number(d.absence_minutes || 0),
     }),
-    { expected: 0, normal: 0, extra: 0, late: 0, absence: 0 },
+    { expected: 0, normal: 0, excused: 0, extra: 0, late: 0, absence: 0 },
   );
+  const overtimeNotice = overtimePermissionNotice(canManage, canManageOvertime);
   if (!state.ready && tab === "monthly")
     return (
       <InitialPageState
@@ -224,7 +230,13 @@ export function ReportsPage({
           >
             Baixar PDF
           </button>
+          {report && canReprocessReport(canManage) && (
+            <button className="secondary" onClick={preview} disabled={loading}>
+              {loading ? "Reprocessando..." : "Reprocessar período"}
+            </button>
+          )}
         </div>
+        {overtimeNotice && <p className="muted" role="note">{overtimeNotice}</p>}
         {!report ? (
           <div className="panel">
             <Empty>
@@ -250,6 +262,9 @@ export function ReportsPage({
                   Normais <b>{minutesToHHMM(totals.normal)}</b>
                 </span>
                 <span>
+                  Abonadas <b>{minutesToHHMM(totals.excused)}</b>
+                </span>
+                <span>
                   Extras <b>{minutesToHHMM(totals.extra)}</b>
                 </span>
                 <span>
@@ -270,6 +285,7 @@ export function ReportsPage({
                       <th>PONTOS</th>
                       <th>Carga prevista</th>
                       <th>Horas normais</th>
+                      <th>Abonadas</th>
                       <th>Horas extras</th>
                       <th>Atrasos</th>
                       <th>Faltas</th>
@@ -299,6 +315,11 @@ export function ReportsPage({
                         <td>
                           {d.normal_minutes
                             ? minutesToHHMM(d.normal_minutes)
+                            : ""}
+                        </td>
+                        <td>
+                          {d.excused_minutes
+                            ? minutesToHHMM(d.excused_minutes)
                             : ""}
                         </td>
                         <td>

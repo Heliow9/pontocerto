@@ -167,6 +167,25 @@ export function fullDayExcusedMinutes(expectedMinutes: number, workedMinutes: nu
   return Math.max(0, expectedMinutes - Math.min(expectedMinutes, workedMinutes));
 }
 
+export function attendanceMetrics(
+  expectedMinutes: number,
+  workedMinutes: number,
+  excusedMinutes: number,
+  lateToleranceMinutes: number,
+  overtimeToleranceMinutes: number,
+): { normalMinutes: number; overtimeMinutes: number; lateMinutes: number } {
+  const shortage = Math.max(
+    0,
+    expectedMinutes - workedMinutes - excusedMinutes,
+  );
+  const overage = Math.max(0, workedMinutes - expectedMinutes);
+  return {
+    normalMinutes: Math.min(workedMinutes, expectedMinutes),
+    overtimeMinutes: overage > overtimeToleranceMinutes ? overage : 0,
+    lateMinutes: shortage > lateToleranceMinutes ? shortage : 0,
+  };
+}
+
 export function scheduledBreakMinutes(day: { exit_1?: string | null; entry_2?: string | null }): number {
   const start = clockMinutes(day.exit_1), end = clockMinutes(day.entry_2);
   if (start === null || end === null) return 0;
@@ -399,16 +418,20 @@ export async function processPeriod(params: {
           absenceMinutes = expectedMinutes;
           normalMinutes = 0;
         } else {
-          const compensatedMinutes = workedMinutes + excusedMinutes;
-          const shortage = Math.max(0, expectedMinutes - compensatedMinutes);
-          const overage = Math.max(0, workedMinutes - expectedMinutes);
           const lateTolerance = Number(schedule?.tolerance_late_minutes || 0);
           const overtimeTolerance = Number(
             schedule?.tolerance_overtime_minutes || 0,
           );
-          lateMinutes = shortage > lateTolerance ? shortage : 0;
-          overtimeMinutes = overage > overtimeTolerance ? overage : 0;
-          normalMinutes = Math.min(compensatedMinutes, expectedMinutes);
+          const metrics = attendanceMetrics(
+            expectedMinutes,
+            workedMinutes,
+            excusedMinutes,
+            lateTolerance,
+            overtimeTolerance,
+          );
+          lateMinutes = metrics.lateMinutes;
+          overtimeMinutes = metrics.overtimeMinutes;
+          normalMinutes = metrics.normalMinutes;
           if (excusedMinutes > 0) {
             status = "DECLARACAO";
             statusLabel =

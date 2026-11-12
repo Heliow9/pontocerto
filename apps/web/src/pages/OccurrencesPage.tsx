@@ -12,6 +12,10 @@ import { Employee } from "../types";
 import { Modal } from "../components/Modal";
 import { Badge, Empty, PageHeader } from "../components/Ui";
 import { apiMessage, brDate, localIsoDate } from "../utils";
+import {
+  occurrenceFormError,
+  occurrenceFormMode,
+} from "../occurrence-rules";
 
 const labels: any = {
   ATESTADO: "Atestado",
@@ -20,6 +24,7 @@ const labels: any = {
   LICENCA: "Licença",
   ABONO: "Abono",
   OUTRO: "Outro",
+  DECLARACAO: "Declaração",
 };
 export function OccurrencesPage({
   notify,
@@ -36,6 +41,8 @@ export function OccurrencesPage({
       employeeId: 0,
       startDate: today,
       endDate: today,
+      startTime: "",
+      endTime: "",
       type: "ATESTADO",
       reason: "",
       status: "APPROVED",
@@ -54,12 +61,17 @@ export function OccurrencesPage({
   }, []);
   async function save(e: React.FormEvent) {
     e.preventDefault();
+    const validation = occurrenceFormError(form);
+    if (validation) {
+      notify(validation, "error");
+      return;
+    }
     try {
       await api.post("/absences", {
         ...form,
         employeeId: Number(form.employeeId),
       });
-      notify("Ocorrência cadastrada.");
+      notify("Ocorrência cadastrada e período recalculado.");
       setOpen(false);
       load();
     } catch (err) {
@@ -70,7 +82,7 @@ export function OccurrencesPage({
     if (!confirm("Excluir esta ocorrência?")) return;
     try {
       await api.delete(`/absences/${id}`);
-      notify("Ocorrência excluída.");
+      notify("Ocorrência excluída e período recalculado.");
       load();
     } catch (err) {
       notify(apiMessage(err), "error");
@@ -118,7 +130,7 @@ export function OccurrencesPage({
                   <th>Funcionário</th>
                   <th>Tipo</th>
                   <th>Período</th>
-                  <th>Motivo</th>
+                  <th>Observação</th>
                   <th>Status</th>
                   <th></th>
                 </tr>
@@ -131,7 +143,13 @@ export function OccurrencesPage({
                     </td>
                     <td>{labels[i.type] || i.type}</td>
                     <td>
-                      {brDate(i.start_date)} a {brDate(i.end_date)}
+                      {i.type === "DECLARACAO" ? (
+                        <>
+                          {brDate(i.start_date)} · {String(i.start_time || "").slice(0, 5)}–{String(i.end_time || "").slice(0, 5)}
+                        </>
+                      ) : (
+                        <>{brDate(i.start_date)} a {brDate(i.end_date)}</>
+                      )}
                     </td>
                     <td>{i.reason || "-"}</td>
                     <td>
@@ -185,28 +203,47 @@ export function OccurrencesPage({
               </select>
             </label>
             <label>
-              Data inicial
+              {occurrenceFormMode(form.type) === "hourly" ? "Data" : "Data inicial"}
               <input
+                required
                 type="date"
                 value={form.startDate}
-                onChange={(e) =>
-                  setForm({ ...form, startDate: e.target.value })
-                }
+                onChange={(e) => {
+                  const startDate = e.target.value;
+                  setForm({
+                    ...form,
+                    startDate,
+                    endDate:
+                      occurrenceFormMode(form.type) === "hourly"
+                        ? startDate
+                        : form.endDate,
+                  });
+                }}
               />
             </label>
-            <label>
-              Data final
-              <input
-                type="date"
-                value={form.endDate}
-                onChange={(e) => setForm({ ...form, endDate: e.target.value })}
-              />
-            </label>
+            {occurrenceFormMode(form.type) === "full-day" && (
+              <label>
+                Data final
+                <input
+                  required
+                  type="date"
+                  value={form.endDate}
+                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                />
+              </label>
+            )}
             <label>
               Tipo
               <select
                 value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value })}
+                onChange={(e) => {
+                  const type = e.target.value;
+                  setForm({
+                    ...form,
+                    type,
+                    endDate: type === "DECLARACAO" ? form.startDate : form.endDate,
+                  });
+                }}
               >
                 {Object.entries(labels).map(([k, v]) => (
                   <option key={k} value={k}>
@@ -215,6 +252,28 @@ export function OccurrencesPage({
                 ))}
               </select>
             </label>
+            {occurrenceFormMode(form.type) === "hourly" && (
+              <>
+                <label>
+                  Hora inicial
+                  <input
+                    required
+                    type="time"
+                    value={form.startTime}
+                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                  />
+                </label>
+                <label>
+                  Hora final
+                  <input
+                    required
+                    type="time"
+                    value={form.endTime}
+                    onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                  />
+                </label>
+              </>
+            )}
             <label>
               Status
               <select
@@ -227,8 +286,10 @@ export function OccurrencesPage({
               </select>
             </label>
             <label className="span-2">
-              Motivo/observação
+              Observação para auditoria
               <textarea
+                required
+                minLength={3}
                 rows={3}
                 value={form.reason}
                 onChange={(e) => setForm({ ...form, reason: e.target.value })}

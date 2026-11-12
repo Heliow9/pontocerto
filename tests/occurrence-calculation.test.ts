@@ -3,6 +3,7 @@ import { expect, it, vi } from "vitest";
 vi.mock("../apps/api/src/db/pool.js", () => ({ pool: {} }));
 
 import {
+  attendanceMetrics,
   declarationCreditMinutes,
   fullDayExcusedMinutes,
 } from "../apps/api/src/services/calculation.service";
@@ -53,4 +54,12 @@ it("credits the remaining scheduled deficit for full-day medical leave or vacati
   expect(fullDayExcusedMinutes(540, 0)).toBe(540);
   expect(fullDayExcusedMinutes(540, 120)).toBe(420);
   expect(fullDayExcusedMinutes(540, 600)).toBe(0);
+});
+
+it("reduces lateness without reporting excused declaration time as worked normal time", () => {
+  expect(attendanceMetrics(540, 300, 120, 10, 10)).toEqual({
+    normalMinutes: 300,
+    overtimeMinutes: 0,
+    lateMinutes: 120,
+  });
 });

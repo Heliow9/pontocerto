@@ -95,7 +95,7 @@ async function loadReport(tenantId: number, employeeId: number, start: string, e
 
   const [days] = await pool.query<any[]>(
     `SELECT d.work_date,d.status,d.status_label,d.points_text,d.expected_minutes,d.worked_minutes,
-            d.break_deducted_minutes,d.normal_minutes,d.overtime_minutes,d.late_minutes,d.absence_minutes,d.time_bank_minutes,
+            d.break_deducted_minutes,d.excused_minutes,d.normal_minutes,d.overtime_minutes,d.late_minutes,d.absence_minutes,d.time_bank_minutes,
             IF(o.active=1,1,0) AS overtime_ignored,o.reason AS overtime_ignore_reason
        FROM daily_time_calculations d
        LEFT JOIN employee_overtime_overrides o ON o.tenant_id=d.tenant_id AND o.employee_id=d.employee_id
@@ -217,10 +217,11 @@ reportsRouter.get("/monthly/:employeeId", async (req, res) => {
     totalLate += Number(d.late_minutes || 0);
     totalAbsence += Number(d.absence_minutes || 0);
 
-    const isSpecial = ["FOLGA", "FERIADO", "FALTA", "ATESTADO", "FERIAS", "AFASTAMENTO", "LICENCA", "ABONO"].includes(d.status);
+    const isSpecial = ["FOLGA", "FERIADO", "FALTA", "ATESTADO", "FERIAS", "AFASTAMENTO", "LICENCA", "ABONO", "DECLARACAO"].includes(d.status);
     const annotations = [
       d.status === "NORMAL" ? "" : (d.status_label || d.status),
       d.break_deducted_minutes ? `Int. -${minutesToHHMM(d.break_deducted_minutes)}` : "",
+      d.excused_minutes ? `Abonadas ${minutesToHHMM(d.excused_minutes)}` : "",
       d.overtime_ignored ? "Extra ignorada" : "",
     ].filter(Boolean);
     const statusText = annotations.join(" · ");
