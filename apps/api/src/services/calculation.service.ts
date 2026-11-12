@@ -25,8 +25,10 @@ type ScheduleDayRow = {
   weekday: number;
   is_day_off: number;
   expected_minutes: number;
+  entry_1?: string | null;
   exit_1?: string | null;
   entry_2?: string | null;
+  exit_2?: string | null;
 };
 
 type TimeEntryRow = {
@@ -50,6 +52,8 @@ type AbsenceRow = {
   end_date: string;
   type: string;
   reason: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
 };
 
 const absenceStatusMap: Record<string, string> = {
@@ -112,6 +116,55 @@ function clockMinutes(value: string | null | undefined): number | null {
   const hours = Number(match[1]), minutes = Number(match[2]);
   if (hours > 23 || minutes > 59) return null;
   return hours * 60 + minutes;
+}
+
+type ClockInterval = { start: number; end: number };
+
+function mergeClockIntervals(intervals: ClockInterval[]): ClockInterval[] {
+  const ordered = intervals
+    .filter((interval) => interval.end > interval.start)
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+  const merged: ClockInterval[] = [];
+  for (const interval of ordered) {
+    const previous = merged[merged.length - 1];
+    if (!previous || interval.start > previous.end)
+      merged.push({ ...interval });
+    else previous.end = Math.max(previous.end, interval.end);
+  }
+  return merged;
+}
+
+export function declarationCreditMinutes(
+  day: {
+    entry_1?: string | null;
+    exit_1?: string | null;
+    entry_2?: string | null;
+    exit_2?: string | null;
+  },
+  declarations: Array<{ start_time?: string | null; end_time?: string | null }>,
+  deficitMinutes: number,
+): number {
+  if (deficitMinutes <= 0) return 0;
+  const interval = (startValue?: string | null, endValue?: string | null) => {
+    const start = clockMinutes(startValue), end = clockMinutes(endValue);
+    return start !== null && end !== null && end > start ? { start, end } : null;
+  };
+  const scheduled = mergeClockIntervals([
+    interval(day.entry_1, day.exit_1),
+    interval(day.entry_2, day.exit_2),
+  ].filter((value): value is ClockInterval => Boolean(value)));
+  const declared = mergeClockIntervals(declarations
+    .map((item) => interval(item.start_time, item.end_time))
+    .filter((value): value is ClockInterval => Boolean(value)));
+  let covered = 0;
+  for (const declaration of declared)
+    for (const segment of scheduled)
+      covered += Math.max(0, Math.min(declaration.end, segment.end) - Math.max(declaration.start, segment.start));
+  return Math.min(Math.max(0, deficitMinutes), covered);
+}
+
+export function fullDayExcusedMinutes(expectedMinutes: number, workedMinutes: number): number {
+  return Math.max(0, expectedMinutes - Math.min(expectedMinutes, workedMinutes));
 }
 
 export function scheduledBreakMinutes(day: { exit_1?: string | null; entry_2?: string | null }): number {
@@ -201,7 +254,7 @@ export async function processPeriod(params: {
     for (const row of schedules) scheduleById.set(row.id, row);
 
     const [days] = await pool.query<any[]>(
-      `SELECT work_schedule_id, weekday, is_day_off, expected_minutes, exit_1, entry_2
+      `SELECT work_schedule_id, weekday, is_day_off, expected_minutes, entry_1, exit_1, entry_2, exit_2
          FROM work_schedule_days
         WHERE tenant_id = ? AND work_schedule_id IN (${placeholders})`,
       [tenantId, ...scheduleIds],
@@ -253,7 +306,7 @@ export async function processPeriod(params: {
   );
 
   const [absences] = await pool.query<any[]>(
-    `SELECT employee_id, start_date, end_date, type, reason
+    `SELECT employee_id, start_date, end_date, type, reason, start_time, end_time
        FROM absences
       WHERE tenant_id = ?
         AND status = 'APPROVED'
@@ -289,10 +342,16 @@ export async function processPeriod(params: {
           (h.company_id === null ||
             Number(h.company_id) === employee.company_id),
       );
-      const absence = absences.find(
+      const dayOccurrences = absences.filter(
         (a) =>
           Number(a.employee_id) === employee.id &&
           dateInRange(date, a.start_date, a.end_date),
+      );
+      const absence = dayOccurrences.find(
+        (item) => item.type !== "DECLARACAO",
+      );
+      const declarations = dayOccurrences.filter(
+        (item) => item.type === "DECLARACAO",
       );
       const breakAdjustment = adjustWorkedMinutesForScheduledBreak(
         entries,
@@ -308,6 +367,7 @@ export async function processPeriod(params: {
       let overtimeMinutes = 0;
       let lateMinutes = 0;
       let absenceMinutes = 0;
+      let excusedMinutes = 0;
 
       if (holiday) {
         status = "FERIADO";
@@ -318,6 +378,7 @@ export async function processPeriod(params: {
       } else if (absence) {
         status = absenceStatusMap[absence.type] || "ABONO";
         statusLabel = absence.reason || absence.type;
+        excusedMinutes = fullDayExcusedMinutes(expectedMinutes, workedMinutes);
         normalMinutes = Math.min(workedMinutes, expectedMinutes);
         overtimeMinutes = Math.max(0, workedMinutes - expectedMinutes);
       } else if (scheduleDay?.is_day_off) {
@@ -326,20 +387,37 @@ export async function processPeriod(params: {
         expectedMinutes = 0;
         normalMinutes = 0;
         overtimeMinutes = workedMinutes;
-      } else if (expectedMinutes > 0 && entries.length === 0) {
-        status = "FALTA";
-        statusLabel = "Falta";
-        absenceMinutes = expectedMinutes;
-        normalMinutes = 0;
       } else {
-        const shortage = Math.max(0, expectedMinutes - workedMinutes);
-        const overage = Math.max(0, workedMinutes - expectedMinutes);
-        const lateTolerance = Number(schedule?.tolerance_late_minutes || 0);
-        const overtimeTolerance = Number(
-          schedule?.tolerance_overtime_minutes || 0,
+        excusedMinutes = declarationCreditMinutes(
+          scheduleDay || {},
+          declarations,
+          Math.max(0, expectedMinutes - workedMinutes),
         );
-        lateMinutes = shortage > lateTolerance ? shortage : 0;
-        overtimeMinutes = overage > overtimeTolerance ? overage : 0;
+        if (expectedMinutes > 0 && entries.length === 0 && excusedMinutes === 0) {
+          status = "FALTA";
+          statusLabel = "Falta";
+          absenceMinutes = expectedMinutes;
+          normalMinutes = 0;
+        } else {
+          const compensatedMinutes = workedMinutes + excusedMinutes;
+          const shortage = Math.max(0, expectedMinutes - compensatedMinutes);
+          const overage = Math.max(0, workedMinutes - expectedMinutes);
+          const lateTolerance = Number(schedule?.tolerance_late_minutes || 0);
+          const overtimeTolerance = Number(
+            schedule?.tolerance_overtime_minutes || 0,
+          );
+          lateMinutes = shortage > lateTolerance ? shortage : 0;
+          overtimeMinutes = overage > overtimeTolerance ? overage : 0;
+          normalMinutes = Math.min(compensatedMinutes, expectedMinutes);
+          if (excusedMinutes > 0) {
+            status = "DECLARACAO";
+            statusLabel =
+              declarations
+                .map((item) => item.reason)
+                .filter(Boolean)
+                .join("; ") || "Declaração";
+          }
+        }
       }
 
       const overtimeResult = applyOvertimeOverride(
@@ -352,13 +430,13 @@ export async function processPeriod(params: {
       await pool.query(
         `INSERT INTO daily_time_calculations
          (tenant_id, company_id, employee_id, work_date, status, status_label, points_text,
-          expected_minutes, worked_minutes, break_deducted_minutes, normal_minutes, overtime_minutes, late_minutes,
+          expected_minutes, worked_minutes, break_deducted_minutes, excused_minutes, normal_minutes, overtime_minutes, late_minutes,
           absence_minutes, night_minutes, time_bank_minutes, processed_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ${BRASILIA_NOW_SQL})
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ${BRASILIA_NOW_SQL})
          ON DUPLICATE KEY UPDATE
            company_id = VALUES(company_id), status = VALUES(status), status_label = VALUES(status_label),
            points_text = VALUES(points_text), expected_minutes = VALUES(expected_minutes),
-            worked_minutes = VALUES(worked_minutes), break_deducted_minutes = VALUES(break_deducted_minutes), normal_minutes = VALUES(normal_minutes),
+            worked_minutes = VALUES(worked_minutes), break_deducted_minutes = VALUES(break_deducted_minutes), excused_minutes = VALUES(excused_minutes), normal_minutes = VALUES(normal_minutes),
            overtime_minutes = VALUES(overtime_minutes), late_minutes = VALUES(late_minutes),
            absence_minutes = VALUES(absence_minutes), time_bank_minutes = VALUES(time_bank_minutes),
            processed_at = VALUES(processed_at)`,
@@ -373,6 +451,7 @@ export async function processPeriod(params: {
           expectedMinutes,
           workedMinutes,
           breakAdjustment.deductedMinutes,
+          excusedMinutes,
           normalMinutes,
           overtimeMinutes,
           lateMinutes,
